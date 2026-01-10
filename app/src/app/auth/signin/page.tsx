@@ -1,19 +1,19 @@
 /**
- * Sign In Page
- * Authentication page with multiple provider options
+ * Sign In Page - Modern Design
+ * Beautiful authentication with enhanced UX
  */
 
 'use client';
 
 import { useState } from 'react';
-import { signIn, getSession } from 'next-auth/react';
+import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Github, Mail, Eye, EyeOff } from 'lucide-react';
+import { Brain, Mail, Eye, EyeOff, ArrowRight, Sparkles, Github } from 'lucide-react';
 
 export default function SignInPage() {
   const router = useRouter();
@@ -84,111 +84,162 @@ export default function SignInPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-clearon-50 to-primary-50 px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-clearon-700">
-            Welcome to Clearon
-          </CardTitle>
-          <CardDescription>
-            Sign in to your account to access your documents
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {(error || authError) && (
-            <Alert variant="destructive">
-              <AlertDescription>
-                {error ? getErrorMessage(error) : authError}
-              </AlertDescription>
-            </Alert>
-          )}
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 flex items-center justify-center px-4">
+      {/* Background Elements */}
+      <div className="absolute inset-0 overflow-hidden -z-10">
+        <div className="absolute top-20 left-10 w-72 h-72 bg-blue-200 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob"></div>
+        <div className="absolute top-40 right-10 w-72 h-72 bg-purple-200 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob animation-delay-2000"></div>
+        <div className="absolute bottom-20 left-20 w-72 h-72 bg-pink-200 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob animation-delay-4000"></div>
+      </div>
 
-          {/* OAuth Providers */}
-          <div className="space-y-2">
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => handleProviderSignIn('google')}
-              disabled={isLoading}
-            >
-              <Mail className="w-4 h-4 mr-2" />
-              Continue with Google
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => handleProviderSignIn('github')}
-              disabled={isLoading}
-            >
-              <Github className="w-4 h-4 mr-2" />
-              Continue with GitHub
-            </Button>
+      <div className="w-full max-w-md">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl mb-4">
+            <Brain className="w-8 h-8 text-white" />
           </div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
+            Welcome Back
+          </h1>
+          <p className="text-slate-600">
+            Sign in to access your AI knowledge platform
+          </p>
+        </div>
 
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">
-                Or continue with email
-              </span>
-            </div>
-          </div>
+        {/* Sign In Card */}
+        <Card className="border-0 shadow-2xl bg-white/80 backdrop-blur-sm">
+          <CardContent className="p-8">
+            {(error || authError) && (
+              <Alert variant="destructive" className="mb-6 border-red-200 bg-red-50">
+                <AlertDescription className="text-red-700">
+                  {error ? getErrorMessage(error) : authError}
+                </AlertDescription>
+              </Alert>
+            )}
 
-          {/* Email/Password Form */}
-          <form onSubmit={handleCredentialsSignIn} className="space-y-4">
-            <div>
-              <Input
-                type="email"
-                placeholder="Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
+            {/* OAuth Providers */}
+            <div className="space-y-3 mb-6">
+              <Button
+                variant="outline"
+                className="w-full h-12 border-slate-300 hover:border-blue-400 hover:bg-blue-50 transition-all duration-300"
+                onClick={() => handleProviderSignIn('google')}
                 disabled={isLoading}
-              />
-            </div>
-            <div className="relative">
-              <Input
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={isLoading}
-              />
-              <button
-                type="button"
-                className="absolute right-3 top-1/2 transform -translate-y-1/2"
-                onClick={() => setShowPassword(!showPassword)}
               >
-                {showPassword ? (
-                  <EyeOff className="w-4 h-4 text-gray-400" />
-                ) : (
-                  <Eye className="w-4 h-4 text-gray-400" />
-                )}
-              </button>
+                <Mail className="w-5 h-5 mr-3 text-red-500" />
+                <span className="font-medium">Continue with Google</span>
+              </Button>
+              
+              <Button
+                variant="outline"
+                className="w-full h-12 border-slate-300 hover:border-slate-400 hover:bg-slate-50 transition-all duration-300"
+                onClick={() => handleProviderSignIn('github')}
+                disabled={isLoading}
+              >
+                <Github className="w-5 h-5 mr-3" />
+                <span className="font-medium">Continue with GitHub</span>
+              </Button>
             </div>
-            <Button
-              type="submit"
-              className="w-full bg-clearon-600 hover:bg-clearon-700"
-              disabled={isLoading}
-            >
-              {isLoading ? 'Signing in...' : 'Sign In'}
-            </Button>
-          </form>
 
-          <div className="text-center text-sm">
-            <span className="text-muted-foreground">Don't have an account? </span>
-            <Link
-              href="/auth/signup"
-              className="text-clearon-600 hover:text-clearon-700 font-medium"
-            >
-              Sign up
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
+            {/* Divider */}
+            <div className="relative mb-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-4 bg-white text-slate-500 font-medium">
+                  Or sign in with email
+                </span>
+              </div>
+            </div>
+
+            {/* Email/Password Form */}
+            <form onSubmit={handleCredentialsSignIn} className="space-y-4">
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-2">
+                  Email Address
+                </label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={isLoading}
+                  className="h-12 border-slate-300 focus:border-blue-400 focus:ring-blue-400"
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-2">
+                  Password
+                </label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    disabled={isLoading}
+                    className="h-12 pr-12 border-slate-300 focus:border-blue-400 focus:ring-blue-400"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              
+              <Button
+                type="submit"
+                className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium shadow-lg transition-all duration-300"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <div className="flex items-center">
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                    Signing in...
+                  </div>
+                ) : (
+                  <div className="flex items-center">
+                    Sign In
+                    <ArrowRight className="w-5 h-5 ml-2" />
+                  </div>
+                )}
+              </Button>
+            </form>
+
+            {/* Sign Up Link */}
+            <div className="text-center mt-6 pt-6 border-t border-slate-200">
+              <p className="text-slate-600">
+                Don't have an account?{' '}
+                <Link
+                  href="/auth/signup"
+                  className="font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                >
+                  Create one now
+                </Link>
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Footer */}
+        <div className="text-center mt-8">
+          <p className="text-sm text-slate-500">
+            Secure authentication powered by NextAuth.js
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
