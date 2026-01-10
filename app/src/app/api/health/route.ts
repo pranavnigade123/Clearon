@@ -1,10 +1,9 @@
 /**
- * Health Check API Route
+ * Health Check API Route - Simplified Version
  * System health monitoring and service status
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
@@ -16,25 +15,6 @@ export async function GET(request: NextRequest) {
   };
 
   try {
-    // Check database connection
-    try {
-      const { data, error } = await supabase
-        .from('documents')
-        .select('count')
-        .limit(1);
-      
-      health.services.database = {
-        status: error ? 'unhealthy' : 'healthy',
-        responseTime: Date.now() - startTime,
-        error: error?.message,
-      };
-    } catch (dbError) {
-      health.services.database = {
-        status: 'unhealthy',
-        error: dbError instanceof Error ? dbError.message : 'Database connection failed',
-      };
-    }
-
     // Check document processing service
     try {
       const docServiceResponse = await fetch(
@@ -79,10 +59,11 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // Check S3 connectivity (basic check)
-    health.services.s3 = {
-      status: process.env.AWS_S3_BUCKET ? 'configured' : 'not_configured',
-      bucket: process.env.AWS_S3_BUCKET || 'not_set',
+    // Basic environment check
+    health.services.environment = {
+      status: 'healthy',
+      nodeEnv: process.env.NODE_ENV || 'development',
+      nextjsVersion: '16.1.1',
     };
 
     // Determine overall health

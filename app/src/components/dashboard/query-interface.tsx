@@ -1,6 +1,6 @@
 /**
- * Query Interface Component
- * Handle user queries and display responses with citations
+ * Query Interface Component - Modern Design
+ * Beautiful AI chat interface with enhanced UX
  */
 
 'use client';
@@ -24,7 +24,12 @@ import {
   Copy,
   ThumbsUp,
   ThumbsDown,
-  Loader2
+  Loader2,
+  Brain,
+  User,
+  Sparkles,
+  Quote,
+  CheckCircle
 } from 'lucide-react';
 import { QueryResponse, Citation, SourceType } from '@/types/database';
 import { formatProcessingTime } from '@/lib/utils';
@@ -43,6 +48,7 @@ export function QueryInterface() {
   const [query, setQuery] = useState('');
   const [history, setHistory] = useState<QueryHistoryItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [copiedText, setCopiedText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -109,9 +115,14 @@ export function QueryInterface() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    // You could add a toast notification here
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedText(text);
+      setTimeout(() => setCopiedText(''), 2000);
+    } catch (error) {
+      console.error('Failed to copy text:', error);
+    }
   };
 
   const getSourceIcon = (sourceType: SourceType) => {
@@ -121,167 +132,240 @@ export function QueryInterface() {
       case 'WEB':
         return <Globe className="w-4 h-4 text-blue-500" />;
       case 'CSV':
-        return <Database className="w-4 h-4 text-green-500" />;
+        return <Database className="w-4 h-4 text-emerald-500" />;
       default:
-        return <FileText className="w-4 h-4 text-gray-500" />;
+        return <FileText className="w-4 h-4 text-slate-500" />;
     }
   };
 
   const renderCitation = (citation: Citation, index: number) => (
-    <div key={index} className="border rounded-lg p-3 bg-gray-50">
-      <div className="flex items-start justify-between mb-2">
+    <div key={index} className="group border border-slate-200 rounded-xl p-4 bg-slate-50 hover:bg-slate-100 transition-colors">
+      <div className="flex items-start justify-between mb-3">
         <div className="flex items-center space-x-2">
           {getSourceIcon(citation.source_type)}
-          <span className="font-medium text-sm">{citation.document_title}</span>
-          <Badge variant="outline" className="text-xs">
+          <span className="font-medium text-sm text-slate-900">{citation.document_title}</span>
+          <Badge variant="outline" className="text-xs border-slate-300">
             {citation.source_type}
           </Badge>
         </div>
-        <span className="text-xs text-gray-500">
-          {Math.round(citation.confidence * 100)}% match
-        </span>
+        <div className="flex items-center space-x-2">
+          <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+            {Math.round(citation.confidence * 100)}% match
+          </Badge>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => copyToClipboard(citation.excerpt)}
+            className="opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            {copiedText === citation.excerpt ? (
+              <CheckCircle className="w-3 h-3 text-emerald-500" />
+            ) : (
+              <Copy className="w-3 h-3" />
+            )}
+          </Button>
+        </div>
       </div>
-      <p className="text-sm text-gray-700 mb-2">"{citation.excerpt}"</p>
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-500">
-          Location: {citation.location}
-        </span>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => copyToClipboard(citation.excerpt)}
-        >
-          <Copy className="w-3 h-3" />
-        </Button>
+      
+      <div className="relative">
+        <Quote className="absolute -left-1 -top-1 w-4 h-4 text-slate-400" />
+        <p className="text-sm text-slate-700 pl-4 italic leading-relaxed">
+          "{citation.excerpt}"
+        </p>
+      </div>
+      
+      <div className="mt-3 text-xs text-slate-500">
+        Location: {citation.location}
       </div>
     </div>
   );
 
+  const suggestedQuestions = [
+    "What are the main points in the document?",
+    "Summarize the key findings",
+    "What does the data show about...",
+    "Explain the methodology used",
+    "What are the conclusions?"
+  ];
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Query Input */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Search className="w-5 h-5" />
-            <span>Ask a Question</span>
+      <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center space-x-3">
+            <div className="p-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl">
+              <Brain className="w-5 h-5 text-white" />
+            </div>
+            <span>Ask Your AI Assistant</span>
           </CardTitle>
           <CardDescription>
-            Ask questions about your uploaded documents and get answers with citations
+            Ask questions about your documents and get intelligent answers with source citations
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="flex space-x-2">
-            <Input
-              placeholder="What would you like to know about your documents?"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              disabled={isProcessing}
-              className="flex-1"
-            />
-            <Button 
-              type="submit" 
-              disabled={!query.trim() || isProcessing}
-              className="bg-clearon-600 hover:bg-clearon-700"
-            >
-              {isProcessing ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </Button>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="relative">
+              <Input
+                placeholder="What would you like to know about your documents?"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                disabled={isProcessing}
+                className="h-14 pr-14 text-base border-slate-300 focus:border-purple-400 focus:ring-purple-400"
+              />
+              <Button 
+                type="submit" 
+                disabled={!query.trim() || isProcessing}
+                className="absolute right-2 top-2 h-10 w-10 p-0 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+              >
+                {isProcessing ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Send className="w-5 h-5" />
+                )}
+              </Button>
+            </div>
+            
+            {/* Suggested Questions */}
+            {history.length === 0 && (
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-slate-700">Try asking:</p>
+                <div className="flex flex-wrap gap-2">
+                  {suggestedQuestions.map((suggestion, index) => (
+                    <Button
+                      key={index}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setQuery(suggestion)}
+                      className="text-xs border-slate-300 hover:border-purple-400 hover:bg-purple-50"
+                    >
+                      {suggestion}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
           </form>
         </CardContent>
       </Card>
 
-      {/* Query History */}
+      {/* Conversation History */}
       {history.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <MessageSquare className="w-5 h-5" />
+        <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center space-x-3">
+              <div className="p-2 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl">
+                <MessageSquare className="w-5 h-5 text-white" />
+              </div>
               <span>Conversation</span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6 max-h-96 overflow-y-auto">
+            <div className="space-y-8 max-h-[600px] overflow-y-auto pr-2">
               {history.map((item) => (
                 <div key={item.id} className="space-y-4">
                   {/* User Query */}
                   <div className="flex justify-end">
-                    <div className="bg-clearon-600 text-white rounded-lg px-4 py-2 max-w-xs lg:max-w-md">
-                      <p className="text-sm">{item.query}</p>
-                      <p className="text-xs text-clearon-200 mt-1">
-                        {item.timestamp.toLocaleTimeString()}
-                      </p>
+                    <div className="flex items-start space-x-3 max-w-2xl">
+                      <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-2xl px-6 py-4 shadow-lg">
+                        <p className="text-sm leading-relaxed">{item.query}</p>
+                        <p className="text-xs text-purple-100 mt-2">
+                          {item.timestamp.toLocaleTimeString()}
+                        </p>
+                      </div>
+                      <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <User className="w-4 h-4 text-white" />
+                      </div>
                     </div>
                   </div>
 
                   {/* AI Response */}
                   <div className="flex justify-start">
-                    <div className="bg-gray-100 rounded-lg px-4 py-2 max-w-xs lg:max-w-2xl">
-                      {item.isLoading ? (
-                        <div className="flex items-center space-x-2">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          <span className="text-sm">Thinking...</span>
-                        </div>
-                      ) : item.error ? (
-                        <Alert variant="destructive">
-                          <AlertDescription>{item.error}</AlertDescription>
-                        </Alert>
-                      ) : item.response ? (
-                        <div className="space-y-3">
-                          <p className="text-sm text-gray-800">{item.response.answer}</p>
-                          
-                          <div className="flex items-center space-x-4 text-xs text-gray-500">
-                            <div className="flex items-center space-x-1">
-                              <Clock className="w-3 h-3" />
-                              <span>{formatProcessingTime(item.response.processing_time)}</span>
+                    <div className="flex items-start space-x-3 max-w-4xl">
+                      <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Brain className="w-4 h-4 text-white" />
+                      </div>
+                      <div className="bg-slate-50 rounded-2xl px-6 py-4 shadow-lg flex-1">
+                        {item.isLoading ? (
+                          <div className="flex items-center space-x-3">
+                            <div className="flex space-x-1">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                             </div>
-                            <span>
-                              Confidence: {Math.round(item.response.confidence_score * 100)}%
-                            </span>
-                            <span>
-                              {item.response.citations.length} sources
-                            </span>
+                            <span className="text-sm text-slate-600">AI is thinking...</span>
                           </div>
-
-                          {/* Citations */}
-                          {item.response.citations.length > 0 && (
-                            <div className="space-y-2">
-                              <h4 className="text-xs font-medium text-gray-600 uppercase tracking-wide">
-                                Sources
-                              </h4>
-                              <div className="space-y-2">
-                                {item.response.citations.map((citation, index) => 
-                                  renderCitation(citation, index)
-                                )}
+                        ) : item.error ? (
+                          <Alert variant="destructive" className="border-red-200 bg-red-50">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription className="text-red-700">{item.error}</AlertDescription>
+                          </Alert>
+                        ) : item.response ? (
+                          <div className="space-y-4">
+                            <div className="prose prose-sm max-w-none">
+                              <p className="text-slate-800 leading-relaxed">{item.response.answer}</p>
+                            </div>
+                            
+                            {/* Response Metadata */}
+                            <div className="flex items-center space-x-4 text-xs text-slate-500 pb-3 border-b border-slate-200">
+                              <div className="flex items-center space-x-1">
+                                <Clock className="w-3 h-3" />
+                                <span>{formatProcessingTime(item.response.processing_time)}</span>
                               </div>
+                              <div className="flex items-center space-x-1">
+                                <Sparkles className="w-3 h-3" />
+                                <span>Confidence: {Math.round(item.response.confidence_score * 100)}%</span>
+                              </div>
+                              <span>{item.response.citations.length} sources</span>
                             </div>
-                          )}
 
-                          {/* Feedback Buttons */}
-                          <div className="flex items-center space-x-2 pt-2 border-t">
-                            <Button size="sm" variant="ghost" className="text-xs">
-                              <ThumbsUp className="w-3 h-3 mr-1" />
-                              Helpful
-                            </Button>
-                            <Button size="sm" variant="ghost" className="text-xs">
-                              <ThumbsDown className="w-3 h-3 mr-1" />
-                              Not helpful
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="ghost" 
-                              className="text-xs"
-                              onClick={() => copyToClipboard(item.response!.answer)}
-                            >
-                              <Copy className="w-3 h-3 mr-1" />
-                              Copy
-                            </Button>
+                            {/* Citations */}
+                            {item.response.citations.length > 0 && (
+                              <div className="space-y-3">
+                                <h4 className="text-sm font-semibold text-slate-700 flex items-center space-x-2">
+                                  <Quote className="w-4 h-4" />
+                                  <span>Sources & Citations</span>
+                                </h4>
+                                <div className="grid gap-3">
+                                  {item.response.citations.map((citation, index) => 
+                                    renderCitation(citation, index)
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Action Buttons */}
+                            <div className="flex items-center space-x-2 pt-3 border-t border-slate-200">
+                              <Button size="sm" variant="ghost" className="text-xs h-8">
+                                <ThumbsUp className="w-3 h-3 mr-1" />
+                                Helpful
+                              </Button>
+                              <Button size="sm" variant="ghost" className="text-xs h-8">
+                                <ThumbsDown className="w-3 h-3 mr-1" />
+                                Not helpful
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                className="text-xs h-8"
+                                onClick={() => copyToClipboard(item.response!.answer)}
+                              >
+                                {copiedText === item.response.answer ? (
+                                  <>
+                                    <CheckCircle className="w-3 h-3 mr-1 text-emerald-500" />
+                                    Copied
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3 h-3 mr-1" />
+                                    Copy
+                                  </>
+                                )}
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      ) : null}
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -294,21 +378,25 @@ export function QueryInterface() {
 
       {/* Empty State */}
       {history.length === 0 && (
-        <Card>
-          <CardContent className="text-center py-8">
-            <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Ready to answer your questions
+        <Card className="border-0 shadow-xl bg-white/80 backdrop-blur-sm">
+          <CardContent className="text-center py-16">
+            <div className="w-20 h-20 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <Brain className="w-10 h-10 text-white" />
+            </div>
+            <h3 className="text-2xl font-bold text-slate-900 mb-3">
+              Ready to Answer Your Questions
             </h3>
-            <p className="text-gray-500 mb-4">
-              Ask questions about your uploaded documents and get accurate answers with citations
+            <p className="text-slate-600 mb-6 max-w-2xl mx-auto">
+              Ask questions about your uploaded documents and get accurate, intelligent answers with source citations. 
+              The AI will search through your knowledge base to provide relevant information.
             </p>
-            <div className="text-sm text-gray-400">
-              <p>Try asking:</p>
-              <ul className="mt-2 space-y-1">
-                <li>"What are the main points in the document?"</li>
-                <li>"Summarize the key findings"</li>
-                <li>"What does the data show about..."</li>
+            <div className="bg-slate-50 rounded-xl p-6 max-w-md mx-auto">
+              <h4 className="font-semibold text-slate-900 mb-3">Example Questions:</h4>
+              <ul className="text-sm text-slate-600 space-y-2 text-left">
+                <li>• "What are the main conclusions in the research paper?"</li>
+                <li>• "Summarize the financial data from Q3"</li>
+                <li>• "What methodology was used in the study?"</li>
+                <li>• "Compare the results between different sections"</li>
               </ul>
             </div>
           </CardContent>

@@ -5,11 +5,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { DatabaseService } from '@/lib/supabase';
+import { authOptions } from '@/lib/auth';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -23,14 +24,24 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    const options: any = { limit, offset };
-    if (sourceType) options.sourceType = sourceType;
-    if (status) options.status = status;
+    // Build query
+    let query = supabaseAdmin
+      .from('documents')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .order('created_at', { ascending: false });
 
-    const { data: documents, error } = await DatabaseService.getUserDocuments(
-      session.user.id,
-      options
-    );
+    if (sourceType) {
+      query = query.eq('source_type', sourceType);
+    }
+
+    if (status) {
+      query = query.eq('processing_status', status);
+    }
+
+    query = query.range(offset, offset + limit - 1);
+
+    const { data: documents, error } = await query;
 
     if (error) {
       console.error('Database error:', error);

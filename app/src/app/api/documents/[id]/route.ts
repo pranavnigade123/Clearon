@@ -5,23 +5,17 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { DatabaseService } from '@/lib/supabase';
-
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION!,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
+import { authOptions } from '@/lib/auth';
+import { supabaseAdmin } from '@/lib/supabase';
+import { unlink } from 'fs/promises';
+import { join } from 'path';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -31,22 +25,24 @@ export async function GET(
 
     const documentId = params.id;
 
-    const { data, error } = await DatabaseService.getDocumentWithChunks(
-      documentId,
-      session.user.id
-    );
+    const { data: document, error } = await supabaseAdmin
+      .from('documents')
+      .select('*')
+      .eq('id', documentId)
+      .eq('user_id', session.user.id)
+      .single();
 
-    if (error || !data) {
+    if (error || !document) {
       return NextResponse.json(
         { error: 'Document not found' },
         { status: 404 }
       );
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json({ document });
 
   } catch (error) {
-    console.error('Get document API error:', error);
+    console.error('Get document error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -59,7 +55,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -69,55 +65,53 @@ export async function DELETE(
 
     const documentId = params.id;
 
-    // First, get the document to check ownership and get S3 key
-    const { data, error: fetchError } = await DatabaseService.getDocumentWithChunks(
-      documentId,
-      session.user.id
-    );
+    // Get document details first
+    const { data: document, error: fetchError } = await supabaseAdmin
+      .from('documents')
+      .select('*')
+      .eq('id', documentId)
+      .eq('user_id', session.user.id)
+      .single();
 
-    if (fetchError || !data) {
+    if (fetchError || !document) {
       return NextResponse.json(
         { error: 'Document not found' },
         { status: 404 }
       );
     }
 
-    const document = data.document;
-
-    // Delete from S3 if it has an S3 key
-    if (document.s3_key) {
-      try {
-        const deleteCommand = new DeleteObjectCommand({
-          Bucket: process.env.AWS_S3_BUCKET!,
-          Key: document.s3_key,
-        });
-        await s3Client.send(deleteCommand);
-      } catch (s3Error) {
-        console.error('S3 deletion error:', s3Error);
-        // Continue with database deletion even if S3 fails
-      }
-    }
-
-    // Delete from database (chunks will be deleted automatically due to CASCADE)
-    const { error: deleteError } = await DatabaseService.deleteDocument(
-      documentId,
-      session.user.id
-    );
+    // Delete the document record from database
+    const { error: deleteError } = await supabaseAdmin
+      .from('documents')
+      .delete()
+      .eq('id', documentId)
+      .eq('user_id', session.user.id);
 
     if (deleteError) {
-      console.error('Database deletion error:', deleteError);
+      console.error('Database delete error:', deleteError);
       return NextResponse.json(
         { error: 'Failed to delete document' },
         { status: 500 }
       );
     }
 
+    // Try to delete the local file if it exists
+    if (document.metadata?.localPath) {
+      try {
+        await unlink(document.metadata.localPath);
+      } catch (fileError) {
+        console.warn('Failed to delete local file:', fileError);
+        // Don't fail the request if file deletion fails
+      }
+    }
+
     return NextResponse.json({
       message: 'Document deleted successfully',
+      document_id: documentId,
     });
 
   } catch (error) {
-    console.error('Delete document API error:', error);
+    console.error('Delete document error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

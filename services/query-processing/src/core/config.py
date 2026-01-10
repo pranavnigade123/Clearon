@@ -5,7 +5,8 @@ Configuration settings for Query Processing Service
 import os
 from typing import List
 
-from pydantic import BaseSettings, validator
+from pydantic_settings import BaseSettings
+from pydantic import field_validator
 
 
 class Settings(BaseSettings):
@@ -41,25 +42,29 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
     
-    @validator("ALLOWED_ORIGINS", pre=True)
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @classmethod
     def parse_cors_origins(cls, v):
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(",")]
         return v
     
-    @validator("DATABASE_URL")
+    @field_validator("DATABASE_URL")
+    @classmethod
     def validate_database_url(cls, v):
         if not v:
             raise ValueError("DATABASE_URL is required")
         return v
     
-    @validator("SUPABASE_URL")
+    @field_validator("SUPABASE_URL")
+    @classmethod
     def validate_supabase_url(cls, v):
         if not v:
             raise ValueError("SUPABASE_URL is required")
         return v
     
-    @validator("SIMILARITY_THRESHOLD")
+    @field_validator("SIMILARITY_THRESHOLD")
+    @classmethod
     def validate_similarity_threshold(cls, v):
         if not 0.0 <= v <= 1.0:
             raise ValueError("SIMILARITY_THRESHOLD must be between 0.0 and 1.0")
@@ -68,6 +73,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Ignore extra fields
 
 
 settings = Settings()

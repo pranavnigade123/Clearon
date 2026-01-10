@@ -11,11 +11,10 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from loguru import logger
 
-from ...core.config import settings
-from ...core.document_processor import DocumentProcessor
-from ...core.embedding_service import EmbeddingService
-from ...shared.database.connection import document_service, query_service
-from ...shared.models.base import ProcessingResult, SourceType
+from core.config import settings
+from core.document_processor import DocumentProcessor
+from core.embedding_service import EmbeddingService
+from shared.database.connection import document_service, query_service
 
 router = APIRouter()
 

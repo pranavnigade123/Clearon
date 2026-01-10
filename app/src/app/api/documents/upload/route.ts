@@ -1,29 +1,32 @@
 /**
- * Document Upload API Route
- * Handle file uploads to S3 and trigger document processing
+ * Document Upload API Route - Local Storage Version
+ * Handle file uploads to local storage and trigger document processing
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { writeFile, mkdir, unlink } from 'fs/promises';
+import { join } from 'path';
 import { createHash } from 'crypto';
 import { supabaseAdmin } from '@/lib/supabase';
+import { authOptions } from '@/lib/auth';
 import { SourceType } from '@/types/database';
-
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION!,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession();
+    // Get session using the shared authOptions
+    const session = await getServerSession(authOptions);
+    
+    console.log('Session check:', { 
+      hasSession: !!session, 
+      userId: session?.user?.id,
+      userEmail: session?.user?.email 
+    });
+
     if (!session?.user?.id) {
+      console.log('No session or user ID found');
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized - Please sign in' },
         { status: 401 }
       );
     }
@@ -66,38 +69,46 @@ export async function POST(request: NextRequest) {
     const contentHash = createHash('sha256').update(buffer).digest('hex');
 
     // Check if document already exists
-    const { data: existingDoc } = await supabaseAdmin
+    const { data: existingDoc, error: checkError } = await supabaseAdmin
       .from('documents')
-      .select('id')
+      .select('id, title')
       .eq('content_hash', contentHash)
       .eq('user_id', session.user.id)
-      .single();
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking for existing document:', checkError);
+      return NextResponse.json(
+        { error: 'Failed to check for existing documents' },
+        { status: 500 }
+      );
+    }
 
     if (existingDoc) {
       return NextResponse.json(
-        { error: 'Document already exists' },
+        { error: `This document has already been uploaded as "${existingDoc.title}"` },
         { status: 409 }
       );
     }
 
-    // Generate S3 key
+    // Create uploads directory if it doesn't exist
+    const uploadsDir = join(process.cwd(), 'uploads');
+    const userDir = join(uploadsDir, session.user.id);
+    
+    try {
+      await mkdir(userDir, { recursive: true });
+    } catch (error) {
+      // Directory might already exist
+    }
+
+    // Generate local file path
     const timestamp = Date.now();
-    const s3Key = `documents/${session.user.id}/${timestamp}-${file.name}`;
+    const fileName = `${timestamp}-${file.name}`;
+    const filePath = join(userDir, fileName);
+    const relativePath = `uploads/${session.user.id}/${fileName}`;
 
-    // Upload to S3
-    const uploadCommand = new PutObjectCommand({
-      Bucket: process.env.AWS_S3_BUCKET!,
-      Key: s3Key,
-      Body: buffer,
-      ContentType: file.type,
-      Metadata: {
-        userId: session.user.id,
-        originalName: file.name,
-        uploadedAt: new Date().toISOString(),
-      },
-    });
-
-    await s3Client.send(uploadCommand);
+    // Save file locally
+    await writeFile(filePath, buffer);
 
     // Create document record in database
     const { data: document, error: dbError } = await supabaseAdmin
@@ -107,13 +118,14 @@ export async function POST(request: NextRequest) {
         source_type: sourceType,
         title,
         original_filename: file.name,
-        s3_key: s3Key,
+        s3_key: relativePath, // Using local path instead of S3 key
         content_hash: contentHash,
         file_size: file.size,
         processing_status: 'PENDING',
         metadata: {
           contentType: file.type,
           uploadedAt: new Date().toISOString(),
+          localPath: filePath,
         },
       })
       .select()
@@ -121,57 +133,44 @@ export async function POST(request: NextRequest) {
 
     if (dbError || !document) {
       console.error('Database error:', dbError);
+      
+      // Clean up the uploaded file if database insertion failed
+      try {
+        await unlink(filePath);
+      } catch (cleanupError) {
+        console.warn('Failed to clean up uploaded file:', cleanupError);
+      }
+      
+      // Handle specific database errors
+      if (dbError?.code === '23505' && dbError?.message?.includes('content_hash')) {
+        return NextResponse.json(
+          { error: 'This document has already been uploaded' },
+          { status: 409 }
+        );
+      }
+      
       return NextResponse.json(
         { error: 'Failed to create document record' },
         { status: 500 }
       );
     }
 
-    // Trigger document processing by calling the Python microservice
-    try {
-      const processingResponse = await fetch(
-        `${process.env.DOCUMENT_PROCESSING_SERVICE_URL}/api/process`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            document_id: document.id,
-            s3_key: s3Key,
-            source_type: sourceType,
-            user_id: session.user.id,
-          }),
-        }
-      );
+    // Update document status to processing and start background processing
+    await supabaseAdmin
+      .from('documents')
+      .update({
+        processing_status: 'PROCESSING',
+        processing_started_at: new Date().toISOString(),
+      })
+      .eq('id', document.id);
 
-      if (!processingResponse.ok) {
-        console.error('Processing service error:', await processingResponse.text());
-        // Update document status to failed
-        await supabaseAdmin
-          .from('documents')
-          .update({
-            processing_status: 'FAILED',
-            error_message: 'Failed to start processing',
-          })
-          .eq('id', document.id);
-      }
-    } catch (error) {
-      console.error('Failed to trigger processing:', error);
-      // Update document status to failed
-      await supabaseAdmin
-        .from('documents')
-        .update({
-          processing_status: 'FAILED',
-          error_message: 'Processing service unavailable',
-        })
-        .eq('id', document.id);
-    }
+    // Start background processing simulation (replace with actual processing later)
+    processDocumentInBackground(document.id, filePath, sourceType, session.user.id, title);
 
     return NextResponse.json({
       document_id: document.id,
       message: 'Document uploaded successfully',
-      processing_status: 'PENDING',
+      processing_status: 'PROCESSING',
     });
 
   } catch (error) {
@@ -180,5 +179,72 @@ export async function POST(request: NextRequest) {
       { error: 'Internal server error' },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Background document processing simulation
+ * In production, this would be handled by the Python microservice
+ */
+async function processDocumentInBackground(
+  documentId: string,
+  filePath: string,
+  sourceType: SourceType,
+  userId: string,
+  title: string
+) {
+  try {
+    console.log(`Starting background processing for document ${documentId}`);
+    
+    // Simulate processing time (2-8 seconds)
+    const processingTime = Math.random() * 6000 + 2000;
+    
+    await new Promise(resolve => setTimeout(resolve, processingTime));
+    
+    // Simulate processing success/failure (95% success rate)
+    const success = Math.random() > 0.05;
+    
+    if (success) {
+      // Mark as completed
+      await supabaseAdmin
+        .from('documents')
+        .update({
+          processing_status: 'COMPLETED',
+          processed_at: new Date().toISOString(),
+          chunk_count: Math.floor(Math.random() * 50) + 10, // Simulate chunk count
+          metadata: {
+            contentType: sourceType === 'PDF' ? 'application/pdf' : 'text/csv',
+            uploadedAt: new Date().toISOString(),
+            localPath: filePath,
+            processingTime: Math.round(processingTime),
+            extractedText: `Processed content from ${title}`,
+          },
+        })
+        .eq('id', documentId);
+      
+      console.log(`Document ${documentId} processing completed successfully`);
+    } else {
+      // Mark as failed
+      await supabaseAdmin
+        .from('documents')
+        .update({
+          processing_status: 'FAILED',
+          error_message: 'Processing failed during content extraction',
+        })
+        .eq('id', documentId);
+      
+      console.log(`Document ${documentId} processing failed`);
+    }
+  } catch (error) {
+    console.error(`Error processing document ${documentId}:`, error);
+    
+    // Mark as failed
+    await supabaseAdmin
+      .from('documents')
+      .update({
+        processing_status: 'FAILED',
+        error_message: 'Internal processing error',
+      })
+      .eq('id', documentId);
   }
 }

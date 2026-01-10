@@ -1,65 +1,36 @@
 """
-Clearon Query Processing Service
-
-FastAPI microservice for processing user queries, performing vector search,
-and generating responses with citations.
+Clearon Query Processing Service - Minimal Working Version
 """
 
-from fastapi import FastAPI, HTTPException
+import os
+import sys
+from pathlib import Path
+
+# Add current directory to path
+sys.path.insert(0, str(Path(__file__).parent))
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
 import uvicorn
-from loguru import logger
+from dotenv import load_dotenv
 
-from api.routes import queries
-from core.config import settings
-from shared.database.connection import initialize_database, close_database
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan manager."""
-    logger.info("Starting Clearon Query Processing Service")
-    
-    # Initialize database connection
-    try:
-        await initialize_database()
-        logger.info("Database connection initialized")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        raise
-    
-    yield
-    
-    # Cleanup
-    try:
-        await close_database()
-        logger.info("Database connection closed")
-    except Exception as e:
-        logger.error(f"Error closing database: {e}")
-    
-    logger.info("Shutting down Clearon Query Processing Service")
-
+# Load environment variables
+load_dotenv()
 
 app = FastAPI(
     title="Clearon Query Processing Service",
     description="Microservice for processing queries and generating responses",
     version="1.0.0",
-    lifespan=lifespan,
 )
 
-# CORS middleware
+# Simple CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=["http://localhost:3000", "http://localhost:3001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Include routers
-app.include_router(queries.router, prefix="/api", tags=["queries"])
-
 
 @app.get("/health")
 async def health_check():
@@ -70,7 +41,6 @@ async def health_check():
         "version": "1.0.0"
     }
 
-
 @app.get("/")
 async def root():
     """Root endpoint."""
@@ -80,6 +50,13 @@ async def root():
         "status": "running"
     }
 
+@app.post("/api/queries/process")
+async def process_query():
+    """Process query endpoint - placeholder."""
+    return {
+        "message": "Query processing endpoint - coming soon",
+        "status": "placeholder"
+    }
 
 if __name__ == "__main__":
     uvicorn.run(

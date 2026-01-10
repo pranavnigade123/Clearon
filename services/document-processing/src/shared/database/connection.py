@@ -13,7 +13,7 @@ from loguru import logger
 from supabase import create_client, Client
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from ..models.base import DocumentChunk, SourceLocation, UnifiedDocument
+from models.base import DocumentChunk, SourceLocation, UnifiedDocument
 
 
 class DatabaseConnection:

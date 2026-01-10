@@ -1,18 +1,20 @@
 /**
  * Document Status API Route
- * Check processing status of a specific document
+ * Get processing status of a document
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
+import { authOptions } from '@/lib/auth';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
+    
     if (!session?.user?.id) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -22,9 +24,10 @@ export async function GET(
 
     const documentId = params.id;
 
-    const { data: document, error } = await supabase
+    // Get document status from database
+    const { data: document, error } = await supabaseAdmin
       .from('documents')
-      .select('id, processing_status, error_message, processed_at')
+      .select('processing_status, error_message, processed_at, processing_started_at, chunk_count')
       .eq('id', documentId)
       .eq('user_id', session.user.id)
       .single();
@@ -37,14 +40,15 @@ export async function GET(
     }
 
     return NextResponse.json({
-      document_id: document.id,
-      processing_status: document.processing_status,
-      error_message: document.error_message,
+      status: document.processing_status,
+      error: document.error_message,
       processed_at: document.processed_at,
+      processing_started_at: document.processing_started_at,
+      chunk_count: document.chunk_count,
     });
 
   } catch (error) {
-    console.error('Document status API error:', error);
+    console.error('Status check error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

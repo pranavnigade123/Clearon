@@ -1,6 +1,6 @@
 /**
- * Home Page
- * Landing page with authentication and navigation to dashboard
+ * Clearon Landing Page - Modern Design
+ * Beautiful, clean, and professional homepage
  */
 
 'use client';
@@ -10,16 +10,16 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { 
+  Brain, 
   FileText, 
   Search, 
   Zap, 
   Shield, 
-  Globe, 
-  Database,
+  Users,
   ArrowRight,
-  CheckCircle
+  Sparkles
 } from 'lucide-react';
 
 export default function HomePage() {
@@ -27,226 +27,192 @@ export default function HomePage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (session) {
+    if (status === 'authenticated') {
       router.push('/dashboard');
     }
-  }, [session, router]);
+  }, [status, router]);
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-clearon-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
-  if (session) {
-    return null; // Will redirect to dashboard
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-clearon-50 to-primary-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
+      {/* Navigation */}
+      <nav className="border-b border-slate-200/60 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
+          <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-clearon-600 rounded-lg flex items-center justify-center">
-                <Search className="w-5 h-5 text-white" />
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+                <Brain className="w-5 h-5 text-white" />
               </div>
-              <h1 className="text-2xl font-bold text-clearon-700">Clearon</h1>
+              <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                Clearon
+              </span>
             </div>
             <div className="flex items-center space-x-4">
               <Link href="/auth/signin">
-                <Button variant="outline">Sign In</Button>
+                <Button variant="ghost" className="text-slate-600 hover:text-slate-900">
+                  Sign In
+                </Button>
               </Link>
-              <Link href="/auth/signin">
-                <Button className="bg-clearon-600 hover:bg-clearon-700">
+              <Link href="/auth/signup">
+                <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg">
                   Get Started
                 </Button>
               </Link>
             </div>
           </div>
         </div>
-      </header>
+      </nav>
 
       {/* Hero Section */}
-      <section className="py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
-            Multi-Source
-            <span className="text-clearon-600"> RAG Platform</span>
-          </h1>
-          <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-            Upload documents, process websites, analyze CSV data, and get accurate answers 
-            with precise citations. Enterprise-grade AI powered by advanced retrieval technology.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/auth/signin">
-              <Button size="lg" className="bg-clearon-600 hover:bg-clearon-700">
-                Start Free Trial
-                <ArrowRight className="w-4 h-4 ml-2" />
+      <section className="relative overflow-hidden">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
+          <div className="text-center">
+            <div className="inline-flex items-center px-4 py-2 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-sm font-medium mb-8">
+              <Sparkles className="w-4 h-4 mr-2" />
+              AI-Powered Knowledge Platform
+            </div>
+            
+            <h1 className="text-5xl md:text-6xl font-bold text-slate-900 mb-6 leading-tight">
+              Transform Your
+              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent block">
+                Documents Into
+              </span>
+              Intelligent Answers
+            </h1>
+            
+            <p className="text-xl text-slate-600 mb-10 max-w-3xl mx-auto leading-relaxed">
+              Upload your documents, ask questions, and get instant, accurate answers with citations. 
+              Clearon makes your knowledge searchable and actionable.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+              <Link href="/auth/signup">
+                <Button size="lg" className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-xl px-8 py-4 text-lg">
+                  Start Free Trial
+                  <ArrowRight className="ml-2 w-5 h-5" />
+                </Button>
+              </Link>
+              <Button size="lg" variant="outline" className="border-slate-300 text-slate-700 hover:bg-slate-50 px-8 py-4 text-lg">
+                Watch Demo
               </Button>
-            </Link>
-            <Button size="lg" variant="outline">
-              View Demo
-            </Button>
+            </div>
           </div>
+        </div>
+
+        {/* Background Elements */}
+        <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10">
+          <div className="absolute top-20 left-10 w-72 h-72 bg-blue-200 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob"></div>
+          <div className="absolute top-40 right-10 w-72 h-72 bg-purple-200 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob animation-delay-2000"></div>
+          <div className="absolute bottom-20 left-20 w-72 h-72 bg-pink-200 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-blob animation-delay-4000"></div>
         </div>
       </section>
 
-      {/* Features */}
+      {/* Features Section */}
       <section className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              Powerful Features
+            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">
+              Everything you need to unlock your knowledge
             </h2>
-            <p className="text-xl text-gray-600">
-              Everything you need for intelligent document processing and querying
+            <p className="text-xl text-slate-600 max-w-2xl mx-auto">
+              Powerful features designed to make your documents searchable, queryable, and actionable.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <Card>
-              <CardHeader>
-                <FileText className="w-8 h-8 text-clearon-600 mb-2" />
-                <CardTitle>Multi-Format Support</CardTitle>
-                <CardDescription>
-                  Process PDFs, websites, and CSV files with intelligent content extraction
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <Search className="w-8 h-8 text-clearon-600 mb-2" />
-                <CardTitle>Vector Search</CardTitle>
-                <CardDescription>
-                  Advanced semantic search using state-of-the-art embedding models
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <Zap className="w-8 h-8 text-clearon-600 mb-2" />
-                <CardTitle>Real-time Processing</CardTitle>
-                <CardDescription>
-                  Live updates on document processing status with instant notifications
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <Shield className="w-8 h-8 text-clearon-600 mb-2" />
-                <CardTitle>Enterprise Security</CardTitle>
-                <CardDescription>
-                  Row-level security, encrypted storage, and comprehensive access controls
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <Globe className="w-8 h-8 text-clearon-600 mb-2" />
-                <CardTitle>Web Content Processing</CardTitle>
-                <CardDescription>
-                  Extract and process content from websites and online articles
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <Database className="w-8 h-8 text-clearon-600 mb-2" />
-                <CardTitle>Structured Data Analysis</CardTitle>
-                <CardDescription>
-                  Process CSV files and structured data with intelligent parsing
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* How it Works */}
-      <section className="py-20 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              How It Works
-            </h2>
-            <p className="text-xl text-gray-600">
-              Simple steps to get accurate answers from your documents
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-clearon-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl font-bold text-white">1</span>
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Upload Documents</h3>
-              <p className="text-gray-600">
-                Upload PDFs, provide website URLs, or import CSV files
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="w-16 h-16 bg-clearon-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl font-bold text-white">2</span>
-              </div>
-              <h3 className="text-xl font-semibold mb-2">AI Processing</h3>
-              <p className="text-gray-600">
-                Our AI extracts, chunks, and creates embeddings from your content
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="w-16 h-16 bg-clearon-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl font-bold text-white">3</span>
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Ask Questions</h3>
-              <p className="text-gray-600">
-                Get accurate answers with precise citations and source references
-              </p>
-            </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {[
+              {
+                icon: FileText,
+                title: "Multi-Format Support",
+                description: "Upload PDFs, CSVs, web pages, and more. Clearon extracts and processes content from any source.",
+                color: "from-blue-500 to-cyan-500"
+              },
+              {
+                icon: Search,
+                title: "Intelligent Search",
+                description: "Ask questions in natural language and get precise answers with source citations.",
+                color: "from-purple-500 to-pink-500"
+              },
+              {
+                icon: Brain,
+                title: "AI-Powered Insights",
+                description: "Advanced AI understands context and relationships across all your documents.",
+                color: "from-green-500 to-emerald-500"
+              },
+              {
+                icon: Zap,
+                title: "Lightning Fast",
+                description: "Get answers in seconds, not hours. Optimized for speed and accuracy.",
+                color: "from-yellow-500 to-orange-500"
+              },
+              {
+                icon: Shield,
+                title: "Secure & Private",
+                description: "Your data is encrypted and secure. Full control over your information.",
+                color: "from-red-500 to-rose-500"
+              },
+              {
+                icon: Users,
+                title: "Team Collaboration",
+                description: "Share knowledge bases with your team and collaborate on insights.",
+                color: "from-indigo-500 to-purple-500"
+              }
+            ].map((feature, index) => (
+              <Card key={index} className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 group">
+                <CardContent className="p-8">
+                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-r ${feature.color} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300`}>
+                    <feature.icon className="w-6 h-6 text-white" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-slate-900 mb-3">
+                    {feature.title}
+                  </h3>
+                  <p className="text-slate-600 leading-relaxed">
+                    {feature.description}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </div>
       </section>
 
       {/* CTA Section */}
-      <section className="py-20 bg-clearon-600">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl font-bold text-white mb-4">
-            Ready to Transform Your Document Workflow?
+      <section className="py-20 bg-gradient-to-r from-blue-600 to-purple-600">
+        <div className="max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8">
+          <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
+            Ready to transform your documents?
           </h2>
-          <p className="text-xl text-clearon-100 mb-8">
-            Join thousands of users who trust Clearon for intelligent document processing
+          <p className="text-xl text-blue-100 mb-10">
+            Join thousands of professionals who trust Clearon with their knowledge management.
           </p>
-          <Link href="/auth/signin">
-            <Button size="lg" variant="secondary">
+          <Link href="/auth/signup">
+            <Button size="lg" className="bg-white text-blue-600 hover:bg-blue-50 shadow-xl px-8 py-4 text-lg font-semibold">
               Start Your Free Trial
-              <ArrowRight className="w-4 h-4 ml-2" />
+              <ArrowRight className="ml-2 w-5 h-5" />
             </Button>
           </Link>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-12">
+      <footer className="bg-slate-900 text-slate-300 py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-clearon-600 rounded-lg flex items-center justify-center">
-                <Search className="w-5 h-5 text-white" />
+          <div className="flex flex-col md:flex-row justify-between items-center">
+            <div className="flex items-center space-x-2 mb-4 md:mb-0">
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+                <Brain className="w-5 h-5 text-white" />
               </div>
-              <span className="text-xl font-bold">Clearon</span>
+              <span className="text-xl font-bold text-white">Clearon</span>
             </div>
-            <p className="text-gray-400">
-              © 2026 Clearon. Built with enterprise-grade DevOps practices.
+            <p className="text-slate-400">
+              © 2026 Clearon. All rights reserved.
             </p>
           </div>
         </div>
