@@ -13,13 +13,31 @@ from loguru import logger
 
 from api.routes import documents
 from core.config import settings
+from shared.database.connection import initialize_database, close_database
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     logger.info("Starting Clearon Document Processing Service")
+    
+    # Initialize database connection
+    try:
+        await initialize_database()
+        logger.info("Database connection initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        raise
+    
     yield
+    
+    # Cleanup
+    try:
+        await close_database()
+        logger.info("Database connection closed")
+    except Exception as e:
+        logger.error(f"Error closing database: {e}")
+    
     logger.info("Shutting down Clearon Document Processing Service")
 
 
@@ -46,7 +64,11 @@ app.include_router(documents.router, prefix="/api", tags=["documents"])
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "service": "document-processing"}
+    return {
+        "status": "healthy", 
+        "service": "document-processing",
+        "version": "1.0.0"
+    }
 
 
 @app.get("/")
