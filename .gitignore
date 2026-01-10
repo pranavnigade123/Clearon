@@ -172,5 +172,16 @@ out/
 # Sentry
 .sentryclirc
 
-# Kiro internal files
+# File uploads (user data)
+app/uploads/
+uploads/
+
+# Debug and development files
+debug-documents.js
+test-*.txt
+test-*.csv
+test-*.pdf
+
+# Kiro internal files (but keep specs)
 .kiro/
+!.kiro/specs/
