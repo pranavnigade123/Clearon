@@ -15,7 +15,14 @@ export async function GET(
   try {
     const session = await getServerSession(authOptions);
     
+    console.log('Status API - Session check:', { 
+      hasSession: !!session, 
+      userId: session?.user?.id,
+      documentId: params.id 
+    });
+    
     if (!session?.user?.id) {
+      console.log('Status API - No session, returning 401');
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -24,27 +31,32 @@ export async function GET(
 
     const documentId = params.id;
 
+    console.log(`Status API - Fetching document ${documentId} for user ${session.user.id}`);
+
     // Get document status from database
     const { data: document, error } = await supabaseAdmin
       .from('documents')
-      .select('processing_status, error_message, processed_at, processing_started_at, chunk_count')
+      .select('processing_status, error_message, processed_at, processing_started_at, metadata')
       .eq('id', documentId)
       .eq('user_id', session.user.id)
       .single();
 
     if (error || !document) {
+      console.log(`Status API - Document not found: ${documentId}`, error);
       return NextResponse.json(
         { error: 'Document not found' },
         { status: 404 }
       );
     }
 
+    console.log(`Status API - Document ${documentId} status: ${document.processing_status}`);
+
     return NextResponse.json({
       status: document.processing_status,
       error: document.error_message,
       processed_at: document.processed_at,
       processing_started_at: document.processing_started_at,
-      chunk_count: document.chunk_count,
+      chunk_count: document.metadata?.chunkCount || 0,
     });
 
   } catch (error) {

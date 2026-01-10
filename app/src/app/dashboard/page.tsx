@@ -18,6 +18,14 @@ import { Upload, Search, FileText, BarChart3, Brain, LogOut, User } from 'lucide
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const [activeTab, setActiveTab] = useState<'upload' | 'documents' | 'query' | 'stats'>('upload');
+  const [refreshDocuments, setRefreshDocuments] = useState(0);
+
+  const handleDocumentUploaded = () => {
+    // Trigger refresh of document list
+    setRefreshDocuments(prev => prev + 1);
+    // Optionally switch to documents tab to show the uploaded file
+    // setActiveTab('documents');
+  };
 
   if (status === 'loading') {
     return (
@@ -196,7 +204,7 @@ export default function DashboardPage() {
                     Our AI will process and make them searchable instantly.
                   </p>
                 </div>
-                <DocumentUpload />
+                <DocumentUpload onDocumentUploaded={handleDocumentUploaded} />
               </div>
             )}
 
@@ -211,7 +219,7 @@ export default function DashboardPage() {
                     and organize your knowledge base.
                   </p>
                 </div>
-                <DocumentList />
+                <DocumentList key={refreshDocuments} />
               </div>
             )}
 

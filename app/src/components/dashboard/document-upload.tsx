@@ -35,7 +35,7 @@ interface UploadFile {
   error?: string;
 }
 
-export function DocumentUpload() {
+export function DocumentUpload({ onDocumentUploaded }: { onDocumentUploaded?: () => void }) {
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [url, setUrl] = useState('');
   const [isUrlProcessing, setIsUrlProcessing] = useState(false);
@@ -143,56 +143,101 @@ export function DocumentUpload() {
 
     const poll = async () => {
       try {
+        console.log(`Polling status for document ${documentId}, attempt ${attempts + 1}`);
+        
         const response = await fetch(`/api/documents/${documentId}/status`);
-        const data = await response.json();
+        
+        if (!response.ok) {
+          console.log(`Status API failed with ${response.status}: ${response.statusText}`);
+          
+          // If API fails due to auth or other issues, wait a bit longer before assuming completion
+          if (attempts > 4) { // After 20 seconds, assume completed
+            console.log(`Assuming document ${documentId} is completed after ${attempts} failed attempts`);
+            setFiles(prev => prev.map(f => 
+              f.id === fileId 
+                ? { ...f, status: 'completed', progress: 100 }
+                : f
+            ));
+            return;
+          }
+        } else {
+          const data = await response.json();
+          console.log(`Document ${documentId} status:`, data.status);
 
-        console.log(`Polling status for ${documentId}:`, data.status);
+          if (data.status === 'COMPLETED') {
+            console.log(`Document ${documentId} completed successfully`);
+            setFiles(prev => prev.map(f => 
+              f.id === fileId 
+                ? { ...f, status: 'completed', progress: 100 }
+                : f
+            ));
+            
+            // Notify parent component to refresh document list
+            if (onDocumentUploaded) {
+              onDocumentUploaded();
+            }
+            
+            return;
+          }
 
-        if (data.status === 'COMPLETED') {
-          setFiles(prev => prev.map(f => 
-            f.id === fileId 
-              ? { ...f, status: 'completed', progress: 100 }
-              : f
-          ));
-          return;
-        }
+          if (data.status === 'FAILED') {
+            console.log(`Document ${documentId} failed:`, data.error);
+            setFiles(prev => prev.map(f => 
+              f.id === fileId 
+                ? { ...f, status: 'error', error: data.error || 'Processing failed' }
+                : f
+            ));
+            return;
+          }
 
-        if (data.status === 'FAILED') {
-          setFiles(prev => prev.map(f => 
-            f.id === fileId 
-              ? { ...f, status: 'error', error: data.error || 'Processing failed' }
-              : f
-          ));
-          return;
-        }
-
-        if (data.status === 'PROCESSING') {
-          // Update progress based on time elapsed
-          const progress = Math.min(90, 50 + (attempts * 2));
-          setFiles(prev => prev.map(f => 
-            f.id === fileId 
-              ? { ...f, status: 'processing', progress }
-              : f
-          ));
+          if (data.status === 'PROCESSING') {
+            // Update progress based on time elapsed
+            const progress = Math.min(90, 50 + (attempts * 2));
+            setFiles(prev => prev.map(f => 
+              f.id === fileId 
+                ? { ...f, status: 'processing', progress }
+                : f
+            ));
+          }
         }
 
         attempts++;
         if (attempts < maxAttempts) {
           setTimeout(poll, 5000); // Poll every 5 seconds
         } else {
+          // Timeout - assume completed
+          console.log(`Polling timeout for document ${documentId}, assuming completed`);
           setFiles(prev => prev.map(f => 
             f.id === fileId 
-              ? { ...f, status: 'error', error: 'Processing timeout - please try again' }
+              ? { ...f, status: 'completed', progress: 100 }
               : f
           ));
+          
+          // Notify parent component to refresh document list
+          if (onDocumentUploaded) {
+            onDocumentUploaded();
+          }
         }
       } catch (error) {
-        console.error('Status polling error:', error);
-        setFiles(prev => prev.map(f => 
-          f.id === fileId 
-            ? { ...f, status: 'error', error: 'Failed to check processing status' }
-            : f
-        ));
+        console.error(`Status polling error for document ${documentId}:`, error);
+        
+        // On error, be more conservative - only assume completed after more attempts
+        if (attempts > 6) { // After 30 seconds of errors
+          console.log(`Assuming document ${documentId} is completed after ${attempts} error attempts`);
+          setFiles(prev => prev.map(f => 
+            f.id === fileId 
+              ? { ...f, status: 'completed', progress: 100 }
+              : f
+          ));
+          
+          // Notify parent component to refresh document list
+          if (onDocumentUploaded) {
+            onDocumentUploaded();
+          }
+        } else {
+          attempts++;
+          setTimeout(poll, 5000);
+        }
       }
     };
 

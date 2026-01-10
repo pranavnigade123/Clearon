@@ -47,6 +47,21 @@ export function DocumentList() {
     }
   }, [session]);
 
+  // Poll for status updates on processing documents
+  useEffect(() => {
+    const processingDocs = documents.filter(doc => 
+      doc.processing_status === 'PROCESSING' || doc.processing_status === 'PENDING'
+    );
+
+    if (processingDocs.length > 0) {
+      const interval = setInterval(() => {
+        pollDocuments(); // Use silent polling
+      }, 3000); // Poll every 3 seconds (less frequent)
+
+      return () => clearInterval(interval);
+    }
+  }, [documents]);
+
   const fetchDocuments = async () => {
     try {
       setLoading(true);
@@ -62,6 +77,21 @@ export function DocumentList() {
       setError(error instanceof Error ? error.message : 'Failed to load documents');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Silent polling function that doesn't show loading state
+  const pollDocuments = async () => {
+    try {
+      const response = await fetch('/api/documents');
+      
+      if (response.ok) {
+        const data = await response.json();
+        setDocuments(data.documents || []);
+      }
+    } catch (error) {
+      // Silent fail for polling - don't update error state
+      console.log('Polling failed:', error);
     }
   };
 

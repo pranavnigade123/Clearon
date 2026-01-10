@@ -183,8 +183,8 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Background document processing simulation
- * In production, this would be handled by the Python microservice
+ * Background document processing with real AI service
+ * Calls the Python document processing microservice
  */
 async function processDocumentInBackground(
   documentId: string,
@@ -194,57 +194,80 @@ async function processDocumentInBackground(
   title: string
 ) {
   try {
-    console.log(`Starting background processing for document ${documentId}`);
+    console.log(`Starting real document processing for document ${documentId}`);
     
-    // Simulate processing time (2-8 seconds)
-    const processingTime = Math.random() * 6000 + 2000;
-    
-    await new Promise(resolve => setTimeout(resolve, processingTime));
-    
-    // Simulate processing success/failure (95% success rate)
-    const success = Math.random() > 0.05;
-    
-    if (success) {
-      // Mark as completed
-      await supabaseAdmin
+    // Call the Python document processing service
+    const processingResponse = await fetch('http://127.0.0.1:8001/api/documents/process', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        document_id: documentId,
+        file_path: filePath,
+        source_type: sourceType,
+        user_id: userId,
+        title: title,
+      }),
+    });
+
+    if (!processingResponse.ok) {
+      const errorData = await processingResponse.json().catch(() => ({}));
+      throw new Error(`Processing service error: ${processingResponse.status} - ${errorData.detail || processingResponse.statusText}`);
+    }
+
+    const processingResult = await processingResponse.json();
+    console.log(`Document processing completed for ${documentId}:`, {
+      status: processingResult.status,
+      pages: processingResult.total_pages,
+      words: processingResult.total_words,
+      method: processingResult.extraction_method
+    });
+
+    if (processingResult.status === 'completed') {
+      console.log(`Updating document ${documentId} to COMPLETED status`);
+      
+      // Mark as completed with extracted content
+      const { data, error } = await supabaseAdmin
         .from('documents')
         .update({
           processing_status: 'COMPLETED',
           processed_at: new Date().toISOString(),
-          chunk_count: Math.floor(Math.random() * 50) + 10, // Simulate chunk count
           metadata: {
             contentType: sourceType === 'PDF' ? 'application/pdf' : 'text/csv',
             uploadedAt: new Date().toISOString(),
             localPath: filePath,
-            processingTime: Math.round(processingTime),
-            extractedText: `Processed content from ${title}`,
+            extractedText: processingResult.extracted_text,
+            chunkCount: Math.floor((processingResult.total_words || 0) / 100), // Estimate chunks
+            totalPages: processingResult.total_pages,
+            totalWords: processingResult.total_words,
+            extractionMethod: processingResult.extraction_method,
           },
         })
         .eq('id', documentId);
       
-      console.log(`Document ${documentId} processing completed successfully`);
+      if (error) {
+        console.error(`Failed to update document ${documentId} status:`, error);
+      } else {
+        console.log(`Document ${documentId} processing completed successfully - DB updated`);
+      }
     } else {
-      // Mark as failed
-      await supabaseAdmin
-        .from('documents')
-        .update({
-          processing_status: 'FAILED',
-          error_message: 'Processing failed during content extraction',
-        })
-        .eq('id', documentId);
-      
-      console.log(`Document ${documentId} processing failed`);
+      throw new Error(`Processing service returned unexpected status: ${processingResult.status}`);
     }
   } catch (error) {
     console.error(`Error processing document ${documentId}:`, error);
     
-    // Mark as failed
-    await supabaseAdmin
+    // Mark as failed with error details
+    const { error: updateError } = await supabaseAdmin
       .from('documents')
       .update({
         processing_status: 'FAILED',
-        error_message: 'Internal processing error',
+        error_message: error instanceof Error ? error.message : 'Unknown processing error',
       })
       .eq('id', documentId);
+    
+    if (updateError) {
+      console.error(`Failed to update document ${documentId} to FAILED after error:`, updateError);
+    }
   }
 }
