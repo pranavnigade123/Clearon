@@ -1,4 +1,4 @@
-# Multi-Source Enterprise RAG Platform
+# Clearon - Multi-Source Enterprise RAG Platform
 
 A modern, cloud-native Retrieval-Augmented Generation system that processes multiple document types (PDFs, websites, CSV files) and provides accurate, cited responses to user queries. Built with Next.js + TypeScript frontend and Python FastAPI microservices, showcasing enterprise-grade DevOps practices.
 
@@ -96,8 +96,8 @@ A modern, cloud-native Retrieval-Augmented Generation system that processes mult
 ### Development Setup
 ```bash
 # Clone the repository
-git clone https://github.com/[username]/multi-source-rag-platform.git
-cd multi-source-rag-platform
+git clone https://github.com/pranavnigade123/Clearon.git
+cd clearon
 
 # Install frontend dependencies
 cd frontend
@@ -155,8 +155,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙋‍♂️ Support
 
 - 📧 Email: [your-email@domain.com]
-- 💬 Discussions: [GitHub Discussions](https://github.com/[username]/multi-source-rag-platform/discussions)
-- 🐛 Issues: [GitHub Issues](https://github.com/[username]/multi-source-rag-platform/issues)
+- 💬 Discussions: [GitHub Discussions](https://github.com/pranavnigade123/Clearon/discussions)
+- 🐛 Issues: [GitHub Issues](https://github.com/pranavnigade123/Clearon/issues)
 
 ## 🎯 Project Goals
 
