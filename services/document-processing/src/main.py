@@ -15,9 +15,10 @@ import uvicorn
 from dotenv import load_dotenv
 from loguru import logger
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 from processors import ProcessorFactory
+from core.embedding_service import EmbeddingService
 
 # Load environment variables
 load_dotenv()
@@ -40,8 +41,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize processor factory
+# Initialize processor factory and embedding service
 processor_factory = ProcessorFactory()
+embedding_service = EmbeddingService()
+
+
+class EmbeddingRequest(BaseModel):
+    text: str
+
+
+class EmbeddingResponse(BaseModel):
+    embedding: List[float]
+    dimension: int
+    model: str
 
 
 class ProcessDocumentRequest(BaseModel):
@@ -169,6 +181,49 @@ async def validate_document(file_path: str):
     except Exception as e:
         logger.error(f"Error validating document {file_path}: {e}")
         raise HTTPException(status_code=500, detail=f"Document validation failed: {str(e)}")
+
+
+@app.post("/api/embeddings/generate", response_model=EmbeddingResponse)
+async def generate_embedding(request: EmbeddingRequest):
+    """Generate embedding for text using Sentence Transformers."""
+    try:
+        logger.info(f"Generating embedding for text: {request.text[:100]}...")
+
+        # Validate input
+        if not request.text.strip():
+            raise HTTPException(status_code=400, detail="Text cannot be empty")
+
+        # Generate embedding using embedding service
+        embedding = await embedding_service.generate_single_embedding(request.text)
+        
+        logger.info(f"Generated embedding with dimension: {len(embedding)}")
+
+        return EmbeddingResponse(
+            embedding=embedding,
+            dimension=len(embedding),
+            model=embedding_service.model_name
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating embedding: {e}")
+        raise HTTPException(status_code=500, detail=f"Embedding generation failed: {str(e)}")
+
+
+@app.get("/api/embeddings/health")
+async def embedding_health_check():
+    """Check health of embedding service."""
+    try:
+        health_status = await embedding_service.health_check()
+        return health_status
+
+    except Exception as e:
+        logger.error(f"Error checking embedding service health: {e}")
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
 
 
 if __name__ == "__main__":

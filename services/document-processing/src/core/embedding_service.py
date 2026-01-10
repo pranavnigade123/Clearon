@@ -11,7 +11,18 @@ import torch
 from sentence_transformers import SentenceTransformer
 from loguru import logger
 
-from ..shared.models.base import DocumentChunk
+# from ..shared.models.base import DocumentChunk
+# We'll define DocumentChunk locally to avoid import issues
+from pydantic import BaseModel
+from typing import List, Dict, Any, Optional
+
+class DocumentChunk(BaseModel):
+    chunk_id: str
+    document_id: str
+    content: str
+    chunk_index: int
+    embedding: Optional[List[float]] = None
+    metadata: Dict[str, Any] = {}
 
 
 class EmbeddingService:

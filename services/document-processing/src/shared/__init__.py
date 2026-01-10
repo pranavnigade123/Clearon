@@ -1,1 +1,1 @@
-# Shared package
+# Shared utilities and models

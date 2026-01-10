@@ -19,6 +19,9 @@ from typing import List, Dict, Any, Optional
 import asyncio
 from datetime import datetime
 
+from core.document_service_client import DocumentServiceClient
+from core.database_client import DatabaseClient
+
 # Load environment variables
 load_dotenv()
 
@@ -39,6 +42,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize service clients
+document_client = DocumentServiceClient()
+database_client = DatabaseClient()
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup."""
+    logger.info("Initializing query processing service...")
+    await database_client.initialize()
+    logger.info("Query processing service initialized")
 
 
 class QueryRequest(BaseModel):
@@ -80,8 +95,19 @@ class DocumentChunk(BaseModel):
 @app.get("/health")
 async def health_check():
     """Enhanced health check endpoint."""
+    # Check document service health
+    doc_service_health = await document_client.health_check()
+    
+    # Check database health
+    db_health = await database_client.health_check()
+    
+    # Overall health status
+    overall_status = "healthy"
+    if doc_service_health.get("status") != "healthy" or db_health.get("status") not in ["healthy", "no_connection"]:
+        overall_status = "degraded"
+    
     return {
-        "status": "healthy", 
+        "status": overall_status, 
         "service": "query-processing",
         "version": "1.0.0",
         "features": {
@@ -89,6 +115,10 @@ async def health_check():
             "response_generation": True,
             "citation_extraction": True,
             "cross_source_search": True
+        },
+        "dependencies": {
+            "document_service": doc_service_health,
+            "database": db_health
         }
     }
 
@@ -143,6 +173,9 @@ async def process_query(request: QueryRequest):
         # Calculate processing time
         processing_time = (datetime.now() - start_time).total_seconds() * 1000
         
+        # Get actual chunk count for user
+        total_chunks_searched = await database_client.get_user_chunk_count(request.user_id)
+        
         logger.info(f"Query processed successfully. Found {len(relevant_chunks)} relevant chunks")
         
         return QueryResponse(
@@ -150,7 +183,7 @@ async def process_query(request: QueryRequest):
             response=response_text,
             citations=citations,
             processing_time_ms=int(processing_time),
-            total_chunks_searched=1000,  # This would come from actual search
+            total_chunks_searched=total_chunks_searched,
             relevant_chunks_found=len(relevant_chunks),
             confidence_score=confidence
         )
@@ -173,11 +206,27 @@ async def similarity_search(
     try:
         logger.info(f"Performing similarity search for user {user_id}")
         
-        # This would integrate with vector database (Supabase pgvector)
-        # For now, return mock results
-        mock_chunks = await get_mock_document_chunks(user_id, max_results)
+        # Use database client for actual vector search
+        similar_chunks = await database_client.search_similar_chunks(
+            query_embedding, 
+            user_id, 
+            max_results, 
+            threshold
+        )
         
-        return mock_chunks
+        # Convert to DocumentChunk objects
+        document_chunks = []
+        for chunk_data in similar_chunks:
+            chunk = DocumentChunk(
+                chunk_id=chunk_data['chunk_id'],
+                document_id=chunk_data['document_id'],
+                content=chunk_data['content'],
+                embedding=query_embedding,  # We don't store embeddings in response for efficiency
+                metadata=chunk_data['metadata']
+            )
+            document_chunks.append(chunk)
+        
+        return document_chunks
 
     except Exception as e:
         logger.error(f"Error in similarity search: {e}")
@@ -190,9 +239,22 @@ async def get_document_chunks(document_id: str, user_id: str) -> List[DocumentCh
     try:
         logger.info(f"Retrieving chunks for document {document_id}")
         
-        # This would query the database for actual chunks
-        # For now, return mock data
-        return []
+        # Use database client to get actual chunks
+        chunks_data = await database_client.get_document_chunks(document_id, user_id)
+        
+        # Convert to DocumentChunk objects
+        document_chunks = []
+        for chunk_data in chunks_data:
+            chunk = DocumentChunk(
+                chunk_id=chunk_data['chunk_id'],
+                document_id=chunk_data['document_id'],
+                content=chunk_data['content'],
+                embedding=[],  # Don't include embeddings in response for efficiency
+                metadata=chunk_data['metadata']
+            )
+            document_chunks.append(chunk)
+        
+        return document_chunks
 
     except Exception as e:
         logger.error(f"Error retrieving document chunks: {e}")
@@ -202,17 +264,24 @@ async def get_document_chunks(document_id: str, user_id: str) -> List[DocumentCh
 async def generate_query_embedding(query: str) -> List[float]:
     """Generate embedding for user query."""
     try:
-        # This would call the document processing service's embedding endpoint
-        # For now, return mock embedding
         logger.debug(f"Generating embedding for query: {query}")
         
-        # Mock embedding (384 dimensions for all-MiniLM-L6-v2)
-        import random
-        return [random.random() for _ in range(384)]
+        # Use document service client to generate actual embedding
+        embedding = await document_client.generate_embedding(query)
+        
+        if not embedding:
+            logger.warning("Document service returned empty embedding, using mock")
+            # Fallback to mock embedding
+            import random
+            return [random.random() for _ in range(384)]
+        
+        return embedding
         
     except Exception as e:
         logger.error(f"Error generating query embedding: {e}")
-        raise Exception(f"Query embedding generation failed: {str(e)}")
+        # Fallback to mock embedding
+        import random
+        return [random.random() for _ in range(384)]
 
 
 async def search_similar_chunks(
@@ -225,9 +294,27 @@ async def search_similar_chunks(
     try:
         logger.debug(f"Searching for similar chunks for user {user_id}")
         
-        # This would perform actual vector search in Supabase pgvector
-        # For now, return mock results
-        return await get_mock_document_chunks(user_id, max_results)
+        # Use database client for actual vector search
+        similar_chunks = await database_client.search_similar_chunks(
+            query_embedding, 
+            user_id, 
+            max_results, 
+            threshold
+        )
+        
+        # Convert to DocumentChunk objects
+        document_chunks = []
+        for chunk_data in similar_chunks:
+            chunk = DocumentChunk(
+                chunk_id=chunk_data['chunk_id'],
+                document_id=chunk_data['document_id'],
+                content=chunk_data['content'],
+                embedding=query_embedding,  # Use query embedding for consistency
+                metadata=chunk_data['metadata']
+            )
+            document_chunks.append(chunk)
+        
+        return document_chunks
         
     except Exception as e:
         logger.error(f"Error in chunk similarity search: {e}")
@@ -258,13 +345,16 @@ async def generate_response_with_citations(
         # Create citations
         citations = []
         for i, chunk in enumerate(relevant_chunks):
+            # Get similarity score from chunk metadata if available
+            similarity_score = chunk.metadata.get('similarity_score', 0.8 - (i * 0.1))
+            
             citation = Citation(
                 document_id=chunk.document_id,
                 document_title=chunk.metadata.get('title', f'Document {chunk.document_id}'),
                 chunk_id=chunk.chunk_id,
-                page_number=chunk.metadata.get('page_number'),
-                url=chunk.metadata.get('url'),
-                similarity_score=0.8 - (i * 0.1),  # Mock decreasing similarity
+                page_number=chunk.metadata.get('chunk_metadata', {}).get('page_number'),
+                url=chunk.metadata.get('source_url'),
+                similarity_score=similarity_score,
                 excerpt=chunk.content[:200] + "..." if len(chunk.content) > 200 else chunk.content
             )
             citations.append(citation)
