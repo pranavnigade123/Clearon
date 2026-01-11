@@ -118,12 +118,3 @@ export async function DELETE(
     );
   }
 }
-
-  } catch (error) {
-    console.error('Delete document error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
