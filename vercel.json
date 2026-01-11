@@ -1,17 +1,11 @@
 {
-  "buildCommand": "cd app && npm run build",
-  "outputDirectory": "app/.next",
-  "installCommand": "cd app && npm install",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "installCommand": "npm install",
   "framework": "nextjs",
   "functions": {
-    "app/src/app/api/**/*.ts": {
+    "src/app/api/**/*.ts": {
       "runtime": "nodejs18.x"
     }
-  },
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/app/$1"
-    }
-  ]
+  }
 }
