@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import asyncio
 from datetime import datetime
+import httpx
 
 from core.document_service_client import DocumentServiceClient
 from core.database_client import DatabaseClient
@@ -157,12 +158,22 @@ async def process_query(request: QueryRequest):
         query_embedding = await generate_query_embedding(request.query)
         
         # Step 2: Perform vector similarity search
-        relevant_chunks = await search_similar_chunks(
-            query_embedding, 
+        relevant_chunks = await search_similar_chunks_with_text(
+            request.query,  # Pass the original query text
             request.user_id,
             request.max_results,
             request.similarity_threshold
         )
+        
+        # If no chunks found via API, fallback to database client
+        if not relevant_chunks:
+            logger.info("No chunks found via API, falling back to database client")
+            relevant_chunks = await search_similar_chunks(
+                query_embedding, 
+                request.user_id,
+                request.max_results,
+                request.similarity_threshold
+            )
         
         # Step 3: Generate response with citations
         response_text, citations, confidence = await generate_response_with_citations(
@@ -282,6 +293,57 @@ async def generate_query_embedding(query: str) -> List[float]:
         # Fallback to mock embedding
         import random
         return [random.random() for _ in range(384)]
+
+
+async def search_similar_chunks_with_text(
+    query_text: str, 
+    user_id: str, 
+    max_results: int,
+    threshold: float
+) -> List[DocumentChunk]:
+    """Search for similar document chunks using text search via Next.js internal API."""
+    try:
+        logger.debug(f"Searching for chunks with text: {query_text}")
+        
+        # Call the Next.js internal API (no authentication required)
+        import httpx
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "http://localhost:3000/api/internal/chunks/search",
+                json={
+                    "query_text": query_text,
+                    "user_id": user_id,
+                    "max_results": max_results
+                },
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                chunks = data.get("chunks", [])
+                
+                logger.info(f"Found {len(chunks)} chunks via internal API for query: {query_text}")
+                
+                # Convert to DocumentChunk objects
+                document_chunks = []
+                for chunk_data in chunks:
+                    chunk = DocumentChunk(
+                        chunk_id=chunk_data['chunk_id'],
+                        document_id=chunk_data['document_id'],
+                        content=chunk_data['content'],
+                        embedding=[],  # Empty for now
+                        metadata=chunk_data['metadata']
+                    )
+                    document_chunks.append(chunk)
+                
+                return document_chunks
+            else:
+                logger.error(f"Internal API search failed: {response.status_code} - {response.text}")
+                return []
+        
+    except Exception as e:
+        logger.error(f"Error in text-based chunk search: {e}")
+        return []
 
 
 async def search_similar_chunks(

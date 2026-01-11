@@ -183,9 +183,78 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Background document processing with real AI service
- * Calls the Python document processing microservice
+ * Create document chunks for vector search
+ * Splits document text into chunks and stores them in the database
  */
+async function createDocumentChunks(
+  documentId: string,
+  extractedText: string,
+  sourceType: SourceType
+) {
+  try {
+    console.log(`Creating chunks for document ${documentId}`);
+    
+    // Simple chunking - split by sentences and group into ~500 character chunks
+    const sentences = extractedText.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    const chunks = [];
+    let currentChunk = '';
+    let chunkIndex = 0;
+    
+    for (const sentence of sentences) {
+      const trimmedSentence = sentence.trim();
+      if (currentChunk.length + trimmedSentence.length > 500 && currentChunk.length > 0) {
+        // Save current chunk
+        chunks.push({
+          document_id: documentId,
+          content: currentChunk.trim(),
+          chunk_index: chunkIndex,
+          token_count: Math.floor(currentChunk.length / 4), // Rough estimate
+          source_location: {
+            chunk_index: chunkIndex,
+            source_type: sourceType,
+            page_number: Math.floor(chunkIndex / 3) + 1, // Rough estimate
+          },
+        });
+        
+        currentChunk = trimmedSentence;
+        chunkIndex++;
+      } else {
+        currentChunk += (currentChunk ? '. ' : '') + trimmedSentence;
+      }
+    }
+    
+    // Add the last chunk
+    if (currentChunk.trim().length > 0) {
+      chunks.push({
+        document_id: documentId,
+        content: currentChunk.trim(),
+        chunk_index: chunkIndex,
+        token_count: Math.floor(currentChunk.length / 4),
+        source_location: {
+          chunk_index: chunkIndex,
+          source_type: sourceType,
+          page_number: Math.floor(chunkIndex / 3) + 1,
+        },
+      });
+    }
+    
+    // Insert chunks into database
+    if (chunks.length > 0) {
+      const { data, error } = await supabaseAdmin
+        .from('document_chunks')
+        .insert(chunks);
+      
+      if (error) {
+        console.error(`Failed to create chunks for document ${documentId}:`, error);
+      } else {
+        console.log(`Created ${chunks.length} chunks for document ${documentId}`);
+      }
+    }
+    
+  } catch (error) {
+    console.error(`Error creating chunks for document ${documentId}:`, error);
+  }
+}
 async function processDocumentInBackground(
   documentId: string,
   filePath: string,
@@ -250,6 +319,9 @@ async function processDocumentInBackground(
         console.error(`Failed to update document ${documentId} status:`, error);
       } else {
         console.log(`Document ${documentId} processing completed successfully - DB updated`);
+        
+        // Create document chunks for vector search
+        await createDocumentChunks(documentId, processingResult.extracted_text, sourceType);
       }
     } else {
       throw new Error(`Processing service returned unexpected status: ${processingResult.status}`);

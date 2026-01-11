@@ -182,6 +182,5 @@ test-*.txt
 test-*.csv
 test-*.pdf
 
-# Kiro internal files (but keep specs)
+# Kiro internal files (keep all local)
 .kiro/
-!.kiro/specs/

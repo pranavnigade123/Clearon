@@ -15,16 +15,43 @@ class DatabaseClient:
     
     def __init__(self):
         """Initialize database client with connection parameters."""
-        # For now, we'll use mock data since the database schema isn't fully set up
-        # In production, this would connect to Supabase PostgreSQL with pgvector
-        self.connection_string = None
+        # Get Supabase connection details
+        supabase_url = os.getenv("SUPABASE_URL")
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        
+        if supabase_url and service_role_key:
+            # Extract project reference from Supabase URL
+            # Format: https://xsfezekwynardcvtlfmw.supabase.co
+            project_ref = supabase_url.replace("https://", "").replace("http://", "").split(".")[0]
+            
+            # Supabase direct PostgreSQL connection (port 5432)
+            self.connection_string = f"postgresql://postgres:{service_role_key}@db.{project_ref}.supabase.co:5432/postgres"
+            logger.info(f"Database client configured for Supabase project: {project_ref}")
+        else:
+            logger.warning("No Supabase credentials found, using mock data")
+            self.connection_string = None
+        
         self.pool = None
-        logger.info("Database client initialized in mock mode")
     
     async def initialize(self):
         """Initialize database connection pool."""
-        logger.info("Database client running in mock mode - no actual database connection")
-        # In production, this would initialize the PostgreSQL connection pool
+        if not self.connection_string:
+            logger.info("No database connection string, using mock data")
+            return
+            
+        try:
+            self.pool = await asyncpg.create_pool(
+                self.connection_string,
+                min_size=1,
+                max_size=10,
+                command_timeout=30
+            )
+            logger.info("Database connection pool initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize database pool: {e}")
+            logger.info("Falling back to mock data")
+            self.pool = None
     
     async def search_similar_chunks(
         self, 
@@ -204,16 +231,18 @@ class DatabaseClient:
             return 0
     
     async def _get_mock_chunks(self, user_id: str, max_results: int) -> List[Dict[str, Any]]:
-        """Generate mock chunks for testing when database is not available."""
-        mock_chunks = []
+        """Generate mock chunks only when no real chunks are found."""
+        logger.info(f"Using mock chunks as fallback for user {user_id}")
         
-        for i in range(min(max_results, 3)):
+        # Generic mock chunks that don't assume specific content
+        mock_chunks = []
+        for i in range(min(max_results, 2)):
             chunk = {
                 'chunk_id': f"mock_chunk_{i+1}",
                 'document_id': f"mock_doc_{i+1}",
-                'content': f"This is mock content for chunk {i+1}. It contains relevant information about the user's query and demonstrates how the RAG system retrieves and processes document chunks to generate accurate responses. This content would normally come from actual processed documents.",
+                'content': f"This is mock content for chunk {i+1}. The system couldn't find specific information in your documents to answer this query. Please ensure your documents are properly uploaded and processed.",
                 'chunk_index': i,
-                'similarity_score': 0.8 - (i * 0.1),  # Decreasing similarity
+                'similarity_score': 0.5,  # Lower similarity for mock data
                 'metadata': {
                     'title': f"Mock Document {i+1}",
                     'source_type': 'PDF',
