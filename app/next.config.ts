@@ -15,8 +15,12 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
-        source: '/api/documents/:path*',
-        destination: `${process.env.DOCUMENT_PROCESSING_SERVICE_URL || 'http://localhost:8001'}/api/:path*`,
+        source: '/api/documents/upload',
+        destination: `${process.env.DOCUMENT_PROCESSING_SERVICE_URL || 'http://localhost:8001'}/api/upload`,
+      },
+      {
+        source: '/api/documents/process/:path*',
+        destination: `${process.env.DOCUMENT_PROCESSING_SERVICE_URL || 'http://localhost:8001'}/api/process/:path*`,
       },
       {
         source: '/api/query/:path*',

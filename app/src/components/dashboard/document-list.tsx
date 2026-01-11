@@ -103,13 +103,28 @@ export function DocumentList() {
     try {
       const response = await fetch(`/api/documents/${documentId}`, {
         method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
-
+      
       if (!response.ok) {
-        throw new Error('Failed to delete document');
+        const errorData = await response.text();
+        
+        let errorMessage = 'Failed to delete document';
+        if (response.status === 401) {
+          errorMessage = 'You need to be logged in to delete documents';
+        } else if (response.status === 404) {
+          errorMessage = 'Document not found or you don\'t have permission to delete it';
+        } else if (response.status === 500) {
+          errorMessage = 'Server error occurred while deleting document';
+        }
+        
+        throw new Error(`${errorMessage} (${response.status})`);
       }
 
       setDocuments(prev => prev.filter(doc => doc.id !== documentId));
+      
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Failed to delete document');
     }

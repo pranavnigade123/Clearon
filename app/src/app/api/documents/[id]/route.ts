@@ -12,7 +12,7 @@ import { join } from 'path';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -23,7 +23,7 @@ export async function GET(
       );
     }
 
-    const documentId = params.id;
+    const { id: documentId } = await params;
 
     const { data: document, error } = await supabaseAdmin
       .from('documents')
@@ -52,7 +52,7 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -63,7 +63,7 @@ export async function DELETE(
       );
     }
 
-    const documentId = params.id;
+    const { id: documentId } = await params;
 
     // Get document details first
     const { data: document, error: fetchError } = await supabaseAdmin
@@ -109,6 +109,15 @@ export async function DELETE(
       message: 'Document deleted successfully',
       document_id: documentId,
     });
+
+  } catch (error) {
+    console.error('Delete document error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
 
   } catch (error) {
     console.error('Delete document error:', error);
