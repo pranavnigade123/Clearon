@@ -89,7 +89,7 @@ export const authOptions: NextAuthOptions = {
     error: '/auth/error',
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account, profile }) {
       if (user) {
         token.id = user.id;
       }
@@ -100,6 +100,25 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string;
       }
       return session;
+    },
+    async signIn({ user, account, profile }) {
+      try {
+        // For OAuth providers, we'll create a simple user ID based on email
+        if (account?.provider === 'google' || account?.provider === 'github') {
+          // Generate a consistent user ID based on email
+          const crypto = require('crypto');
+          const userId = crypto.createHash('sha256').update(user.email!).digest('hex').substring(0, 32);
+          user.id = userId;
+          
+          console.log(`OAuth sign-in: ${user.email} via ${account.provider} (ID: ${userId})`);
+          return true;
+        }
+        
+        return true;
+      } catch (error) {
+        console.error('Sign-in callback error:', error);
+        return false;
+      }
     },
   },
   events: {
