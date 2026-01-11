@@ -28,6 +28,7 @@ import {
   Brain,
   User,
   Sparkles,
+  AlertCircle,
   Quote,
   CheckCircle
 } from 'lucide-react';
@@ -63,6 +64,20 @@ export function QueryInterface() {
     e.preventDefault();
     if (!query.trim() || isProcessing) return;
 
+    // Check if user is authenticated
+    if (!session?.user?.id) {
+      const errorQuery: QueryHistoryItem = {
+        id: Math.random().toString(36).substring(7),
+        query: query.trim(),
+        timestamp: new Date(),
+        isLoading: false,
+        error: 'Please sign in to use the AI query feature.',
+      };
+      setHistory(prev => [...prev, errorQuery]);
+      setQuery('');
+      return;
+    }
+
     const queryId = Math.random().toString(36).substring(7);
     const newQuery: QueryHistoryItem = {
       id: queryId,
@@ -89,7 +104,17 @@ export function QueryInterface() {
       });
 
       if (!response.ok) {
-        throw new Error(`Query failed: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('Query failed:', response.status, errorText);
+        
+        let errorMessage = `Query failed: ${response.statusText}`;
+        if (response.status === 401) {
+          errorMessage = 'Authentication required. Please sign in again.';
+        } else if (response.status === 503) {
+          errorMessage = 'AI service is currently unavailable. Please try again later.';
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const result: QueryResponse = await response.json();
@@ -204,7 +229,15 @@ export function QueryInterface() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {!session?.user ? (
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-700">
+                Please sign in to use the AI query feature.
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
             <div className="relative">
               <Input
                 placeholder="What would you like to know about your documents?"
@@ -246,6 +279,7 @@ export function QueryInterface() {
               </div>
             )}
           </form>
+          )}
         </CardContent>
       </Card>
 

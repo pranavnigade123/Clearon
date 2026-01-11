@@ -18,14 +18,17 @@ CREATE TABLE documents (
     original_filename TEXT,
     url TEXT,
     s3_key TEXT,
-    content_hash TEXT UNIQUE,
+    content_hash TEXT,
     file_size BIGINT,
     processing_status processing_status DEFAULT 'PENDING',
     error_message TEXT,
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    processed_at TIMESTAMP WITH TIME ZONE
+    processed_at TIMESTAMP WITH TIME ZONE,
+    
+    -- Unique constraint per user (not globally unique)
+    UNIQUE(user_id, content_hash)
 );
 
 -- Document chunks with vector embeddings

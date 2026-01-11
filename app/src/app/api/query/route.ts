@@ -5,11 +5,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { DatabaseService } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
     try {
       // Call the Python query processing microservice
       const queryResponse = await fetch(
-        `${process.env.QUERY_PROCESSING_SERVICE_URL}/api/query`,
+        `${process.env.QUERY_PROCESSING_SERVICE_URL}/api/queries/process`,
         {
           method: 'POST',
           headers: {
@@ -43,6 +44,7 @@ export async function POST(request: NextRequest) {
             user_id: session.user.id,
             max_results,
             similarity_threshold,
+            include_citations: true,
           }),
         }
       );
@@ -59,15 +61,25 @@ export async function POST(request: NextRequest) {
       const result = await queryResponse.json();
       const processingTime = Date.now() - startTime;
 
+      // Map the response from our query processing service to the expected format
+      const mappedResult = {
+        answer: result.response,
+        citations: result.citations || [],
+        confidence_score: result.confidence_score || 0.5,
+        processing_time_ms: result.processing_time_ms || processingTime,
+        total_chunks_searched: result.total_chunks_searched || 0,
+        relevant_chunks_found: result.relevant_chunks_found || 0,
+      };
+
       // Save query to history
       try {
         await DatabaseService.saveQueryHistory(
           session.user.id,
           query.trim(),
-          result.answer,
-          result.citations,
+          mappedResult.answer,
+          mappedResult.citations,
           processingTime,
-          result.confidence_score
+          mappedResult.confidence_score
         );
       } catch (historyError) {
         console.error('Failed to save query history:', historyError);
@@ -76,7 +88,7 @@ export async function POST(request: NextRequest) {
 
       // Add processing time to response
       return NextResponse.json({
-        ...result,
+        ...mappedResult,
         processing_time: processingTime,
       });
 
