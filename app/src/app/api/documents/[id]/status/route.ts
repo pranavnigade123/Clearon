@@ -10,15 +10,16 @@ import { authOptions } from '@/lib/auth';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
+    const resolvedParams = await params;
     
     console.log('Status API - Session check:', { 
       hasSession: !!session, 
       userId: session?.user?.id,
-      documentId: params.id 
+      documentId: resolvedParams.id 
     });
     
     if (!session?.user?.id) {
@@ -29,7 +30,7 @@ export async function GET(
       );
     }
 
-    const documentId = params.id;
+    const documentId = resolvedParams.id;
 
     console.log(`Status API - Fetching document ${documentId} for user ${session.user.id}`);
 

@@ -90,33 +90,54 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async jwt({ token, user, account, profile }) {
+      // If this is the first sign in, user object will be available
       if (user) {
         token.id = user.id;
+        token.email = user.email;
+        token.name = user.name;
+        token.picture = user.image;
+        
+        // Create/update user in our database via API call
+        try {
+          console.log(`🔄 Syncing user: ${user.email}`);
+          const response = await fetch(`${process.env.NEXTAUTH_URL}/api/users/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: user.email,
+              name: user.name,
+              avatar_url: user.image,
+              provider: account?.provider || 'credentials'
+            })
+          });
+          
+          if (response.ok) {
+            const userData = await response.json();
+            token.userId = userData.id;
+            console.log(`✅ User synced: ${userData.id}`);
+          } else {
+            console.error(`❌ Sync failed: ${response.status} ${response.statusText}`);
+          }
+        } catch (error) {
+          console.error('❌ User sync failed:', error?.message || error);
+        }
       }
+      
       return token;
     },
     async session({ session, token }) {
       if (token) {
-        session.user.id = token.id as string;
+        // Use the database user ID if available, otherwise fall back to token ID
+        session.user.id = (token.userId as string) || (token.id as string);
       }
       return session;
     },
     async signIn({ user, account, profile }) {
       try {
-        // For OAuth providers, we'll create a simple user ID based on email
-        if (account?.provider === 'google' || account?.provider === 'github') {
-          // Generate a consistent user ID based on email
-          const crypto = require('crypto');
-          const userId = crypto.createHash('sha256').update(user.email!).digest('hex').substring(0, 32);
-          user.id = userId;
-          
-          console.log(`OAuth sign-in: ${user.email} via ${account.provider} (ID: ${userId})`);
-          return true;
-        }
-        
+        console.log(`✅ Sign-in: ${user.email} (${account?.provider || 'credentials'})`);
         return true;
       } catch (error) {
-        console.error('Sign-in callback error:', error);
+        console.error('❌ Sign-in error:', error);
         return false;
       }
     },
@@ -131,5 +152,16 @@ export const authOptions: NextAuthOptions = {
       console.log(`User signed out: ${session?.user?.email}`);
     },
   },
-  debug: process.env.NODE_ENV === 'development',
+  debug: false, // Disable verbose NextAuth logs
+  logger: {
+    error(code, metadata) {
+      console.error(`[AUTH ERROR] ${code}:`, metadata?.message || metadata);
+    },
+    warn(code) {
+      // Suppress warnings
+    },
+    debug(code, metadata) {
+      // Suppress debug logs
+    }
+  },
 };
