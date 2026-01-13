@@ -5,6 +5,7 @@ Clearon Document Processing Service - Enhanced with PDF Processing
 import os
 import sys
 from pathlib import Path
+import tempfile
 
 # Add current directory to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -16,6 +17,8 @@ from dotenv import load_dotenv
 from loguru import logger
 from pydantic import BaseModel
 from typing import Optional, List
+import boto3
+from botocore.exceptions import ClientError, NoCredentialsError
 
 from processors import ProcessorFactory
 from core.embedding_service import EmbeddingService
@@ -45,6 +48,20 @@ app.add_middleware(
 processor_factory = ProcessorFactory()
 embedding_service = EmbeddingService()
 
+# Initialize S3 client
+s3_client = None
+try:
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+        region_name=os.getenv('AWS_REGION', 'ap-south-1')
+    )
+    logger.info("S3 client initialized successfully")
+except Exception as e:
+    logger.warning(f"Failed to initialize S3 client: {e}")
+    s3_client = None
+
 
 class EmbeddingRequest(BaseModel):
     text: str
@@ -58,7 +75,9 @@ class EmbeddingResponse(BaseModel):
 
 class ProcessDocumentRequest(BaseModel):
     document_id: str
-    file_path: str
+    file_path: Optional[str] = None  # For local files
+    s3_key: Optional[str] = None     # For S3 files
+    s3_bucket: Optional[str] = None  # S3 bucket name
     source_type: str
     user_id: str
     title: Optional[str] = None
@@ -98,58 +117,147 @@ async def root():
 
 @app.post("/api/documents/process", response_model=ProcessDocumentResponse)
 async def process_document(request: ProcessDocumentRequest):
-    """Process document endpoint with actual PDF processing."""
+    """Process document endpoint with support for both local files and S3."""
     try:
         logger.info(f"Processing document {request.document_id} for user {request.user_id}")
-        logger.info(f"File path: {request.file_path}, Source type: {request.source_type}")
+        
+        # Determine if this is S3 or local file processing
+        if request.s3_key and request.s3_bucket:
+            logger.info(f"S3 processing: {request.s3_bucket}/{request.s3_key}")
+            
+            # Download file from S3 and process it
+            return await process_s3_document(request)
+            
+        elif request.file_path:
+            logger.info(f"Local file processing: {request.file_path}")
+            file_source = request.file_path
+        else:
+            raise HTTPException(status_code=400, detail="Either file_path or s3_key+s3_bucket must be provided")
 
-        # Validate required fields
-        if not all([request.document_id, request.file_path, request.source_type, request.user_id]):
+        # Validate required fields for local processing
+        if not all([request.document_id, request.source_type, request.user_id]):
             raise HTTPException(status_code=400, detail="Missing required fields")
 
-        # Check if file exists (or URL is valid)
-        processor = processor_factory.get_processor(request.file_path)
-        if not processor:
-            logger.error(f"No processor available for file: {request.file_path}")
-            raise HTTPException(status_code=400, detail="Unsupported file type")
+        # For local files, continue with existing logic
+        if request.file_path:
+            # Check if file exists (or URL is valid)
+            processor = processor_factory.get_processor(request.file_path)
+            if not processor:
+                logger.error(f"No processor available for file: {request.file_path}")
+                raise HTTPException(status_code=400, detail="Unsupported file type")
 
-        # Validate file/URL before processing
-        validation_result = processor.validate_pdf(request.file_path)
-        if not validation_result['valid']:
-            logger.error(f"File/URL validation failed: {validation_result['error']}")
-            raise HTTPException(status_code=400, detail=f"Validation failed: {validation_result['error']}")
+            # Validate file/URL before processing
+            validation_result = processor.validate_pdf(request.file_path)
+            if not validation_result['valid']:
+                logger.error(f"File/URL validation failed: {validation_result['error']}")
+                raise HTTPException(status_code=400, detail=f"Validation failed: {validation_result['error']}")
 
-        logger.info(f"Validation passed for: {request.file_path}")
+            logger.info(f"Validation passed for: {request.file_path}")
 
-        # For file paths, check if file exists
-        if not request.file_path.startswith(('http://', 'https://')) and not os.path.exists(request.file_path):
-            logger.error(f"File not found: {request.file_path}")
-            raise HTTPException(status_code=404, detail=f"File not found: {request.file_path}")
+            # For file paths, check if file exists
+            if not request.file_path.startswith(('http://', 'https://')) and not os.path.exists(request.file_path):
+                logger.error(f"File not found: {request.file_path}")
+                raise HTTPException(status_code=404, detail=f"File not found: {request.file_path}")
 
-        # Get appropriate processor (again, for consistency)
-        processor = processor_factory.get_processor(request.file_path)
+            # Get appropriate processor (again, for consistency)
+            processor = processor_factory.get_processor(request.file_path)
 
-        # Process the document
-        result = await processor.process(request.file_path, request.document_id)
-        
-        logger.info(f"Document {request.document_id} processed successfully")
-        logger.info(f"Extracted {result['total_pages']} pages, {result['total_words']} words")
+            # Process the document
+            result = await processor.process(request.file_path, request.document_id)
+            
+            logger.info(f"Document {request.document_id} processed successfully")
+            logger.info(f"Extracted {result['total_pages']} pages, {result['total_words']} words")
 
-        return ProcessDocumentResponse(
-            message="Document processed successfully",
-            document_id=request.document_id,
-            status="completed",
-            extracted_text=result['total_text'][:1000] + "..." if len(result['total_text']) > 1000 else result['total_text'],  # Truncate for response
-            total_pages=result['total_pages'],
-            total_words=result['total_words'],
-            extraction_method=result['extraction_method']
-        )
+            return ProcessDocumentResponse(
+                message="Document processed successfully",
+                document_id=request.document_id,
+                status="completed",
+                extracted_text=result['total_text'][:1000] + "..." if len(result['total_text']) > 1000 else result['total_text'],  # Truncate for response
+                total_pages=result['total_pages'],
+                total_words=result['total_words'],
+                extraction_method=result['extraction_method']
+            )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error processing document {request.document_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Document processing failed: {str(e)}")
+
+
+async def process_s3_document(request: ProcessDocumentRequest) -> ProcessDocumentResponse:
+    """Download file from S3 and process it."""
+    if not s3_client:
+        raise HTTPException(status_code=500, detail="S3 client not initialized")
+    
+    temp_file_path = None
+    try:
+        logger.info(f"Downloading S3 file: {request.s3_bucket}/{request.s3_key}")
+        
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(request.s3_key)[1]) as temp_file:
+            temp_file_path = temp_file.name
+        
+        # Download file from S3
+        try:
+            s3_client.download_file(request.s3_bucket, request.s3_key, temp_file_path)
+            logger.info(f"Successfully downloaded S3 file to: {temp_file_path}")
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'NoSuchKey':
+                raise HTTPException(status_code=404, detail=f"File not found in S3: {request.s3_key}")
+            elif error_code == 'NoSuchBucket':
+                raise HTTPException(status_code=404, detail=f"S3 bucket not found: {request.s3_bucket}")
+            else:
+                raise HTTPException(status_code=500, detail=f"S3 download error: {e}")
+        except NoCredentialsError:
+            raise HTTPException(status_code=500, detail="AWS credentials not configured")
+        
+        # Verify file was downloaded
+        if not os.path.exists(temp_file_path) or os.path.getsize(temp_file_path) == 0:
+            raise HTTPException(status_code=500, detail="Failed to download file from S3")
+        
+        # Get appropriate processor for the file
+        processor = processor_factory.get_processor(temp_file_path)
+        if not processor:
+            raise HTTPException(status_code=400, detail="Unsupported file type")
+        
+        # Validate the downloaded file
+        validation_result = processor.validate_pdf(temp_file_path)
+        if not validation_result['valid']:
+            raise HTTPException(status_code=400, detail=f"File validation failed: {validation_result['error']}")
+        
+        logger.info(f"File validation passed for S3 file: {request.s3_key}")
+        
+        # Process the document
+        result = await processor.process(temp_file_path, request.document_id)
+        
+        logger.info(f"S3 document {request.document_id} processed successfully")
+        logger.info(f"Extracted {result['total_pages']} pages, {result['total_words']} words")
+        
+        return ProcessDocumentResponse(
+            message="S3 document processed successfully",
+            document_id=request.document_id,
+            status="completed",
+            extracted_text=result['total_text'][:1000] + "..." if len(result['total_text']) > 1000 else result['total_text'],
+            total_pages=result['total_pages'],
+            total_words=result['total_words'],
+            extraction_method=f"s3_{result['extraction_method']}"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing S3 document {request.document_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"S3 document processing failed: {str(e)}")
+    finally:
+        # Clean up temporary file
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+                logger.debug(f"Cleaned up temporary file: {temp_file_path}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temporary file {temp_file_path}: {e}")
 
 
 @app.post("/api/documents/validate")
@@ -185,30 +293,63 @@ async def validate_document(file_path: str):
 
 @app.post("/api/embeddings/generate", response_model=EmbeddingResponse)
 async def generate_embedding(request: EmbeddingRequest):
-    """Generate embedding for text using Sentence Transformers."""
+    """Generate embedding for text using OpenAI text-embedding-3-small."""
     try:
-        logger.info(f"Generating embedding for text: {request.text[:100]}...")
+        logger.info(f"Generating OpenAI embedding for text: {request.text[:100]}...")
 
         # Validate input
         if not request.text.strip():
             raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-        # Generate embedding using embedding service
-        embedding = await embedding_service.generate_single_embedding(request.text)
+        # Use OpenAI for embeddings
+        import openai
         
-        logger.info(f"Generated embedding with dimension: {len(embedding)}")
+        openai_api_key = os.getenv('OPENAI_API_KEY')
+        
+        if not openai_api_key or openai_api_key == 'your-openai-api-key-here':
+            logger.warning("No OpenAI API key found, falling back to sentence-transformers")
+            # Fallback to sentence-transformers
+            embedding = await embedding_service.generate_single_embedding(request.text)
+            return EmbeddingResponse(
+                embedding=embedding,
+                dimension=len(embedding),
+                model="all-MiniLM-L6-v2 (fallback)"
+            )
+        
+        # Generate embedding using OpenAI text-embedding-3-small
+        client = openai.OpenAI(api_key=openai_api_key)
+        
+        response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=request.text,
+            encoding_format="float"
+        )
+        
+        embedding = response.data[0].embedding
+        
+        logger.info(f"Generated OpenAI embedding with dimension: {len(embedding)}")
 
         return EmbeddingResponse(
             embedding=embedding,
             dimension=len(embedding),
-            model=embedding_service.model_name
+            model="text-embedding-3-small"
         )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error generating embedding: {e}")
-        raise HTTPException(status_code=500, detail=f"Embedding generation failed: {str(e)}")
+        # Fallback to sentence-transformers on any error
+        try:
+            embedding = await embedding_service.generate_single_embedding(request.text)
+            return EmbeddingResponse(
+                embedding=embedding,
+                dimension=len(embedding),
+                model="all-MiniLM-L6-v2 (error-fallback)"
+            )
+        except Exception as fallback_error:
+            logger.error(f"Fallback embedding also failed: {fallback_error}")
+            raise HTTPException(status_code=500, detail=f"Embedding generation failed: {str(e)}")
 
 
 @app.get("/api/embeddings/health")
