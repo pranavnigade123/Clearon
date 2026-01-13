@@ -15,21 +15,17 @@ class DatabaseClient:
     
     def __init__(self):
         """Initialize database client with connection parameters."""
-        # Get Supabase connection details
-        supabase_url = os.getenv("SUPABASE_URL")
-        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        # Use DATABASE_URL for direct PostgreSQL connection
+        self.connection_string = os.getenv("DATABASE_URL")
         
-        if supabase_url and service_role_key:
-            # Extract project reference from Supabase URL
-            # Format: https://xsfezekwynardcvtlfmw.supabase.co
-            project_ref = supabase_url.replace("https://", "").replace("http://", "").split(".")[0]
-            
-            # Supabase direct PostgreSQL connection (port 5432)
-            self.connection_string = f"postgresql://postgres:{service_role_key}@db.{project_ref}.supabase.co:5432/postgres"
-            logger.info(f"Database client configured for Supabase project: {project_ref}")
+        if self.connection_string:
+            # Extract project reference for logging
+            if "oktdncmkvcvrejohkoar" in self.connection_string:
+                logger.info("Database client configured for Supabase project: oktdncmkvcvrejohkoar")
+            else:
+                logger.info("Database client configured with custom connection string")
         else:
-            logger.warning("No Supabase credentials found, using mock data")
-            self.connection_string = None
+            logger.warning("No DATABASE_URL found, using mock data")
         
         self.pool = None
     

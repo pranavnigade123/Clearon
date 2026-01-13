@@ -60,8 +60,8 @@ async def startup_event():
 class QueryRequest(BaseModel):
     query: str
     user_id: str
-    max_results: Optional[int] = 5
-    similarity_threshold: Optional[float] = 0.5
+    max_results: Optional[int] = 5  # Top-k 3-5 as specified
+    similarity_threshold: Optional[float] = 0.78
     include_citations: Optional[bool] = True
 
 
@@ -157,17 +157,27 @@ async def process_query(request: QueryRequest):
         # Step 1: Generate query embedding
         query_embedding = await generate_query_embedding(request.query)
         
-        # Step 2: Perform vector similarity search
-        relevant_chunks = await search_similar_chunks_with_text(
-            request.query,  # Pass the original query text
+        # Step 2: Perform vector similarity search (primary method)
+        relevant_chunks = await search_similar_chunks_with_vector(
+            query_embedding,
             request.user_id,
             request.max_results,
             request.similarity_threshold
         )
         
-        # If no chunks found via API, fallback to database client
+        # Fallback to text search if vector search fails or returns no results
         if not relevant_chunks:
-            logger.info("No chunks found via API, falling back to database client")
+            logger.info("Vector search returned no results, falling back to text search")
+            relevant_chunks = await search_similar_chunks_with_text(
+                request.query,  # Pass the original query text
+                request.user_id,
+                request.max_results,
+                request.similarity_threshold
+            )
+        
+        # Final fallback to database client
+        if not relevant_chunks:
+            logger.info("Text search failed, falling back to database client")
             relevant_chunks = await search_similar_chunks(
                 query_embedding, 
                 request.user_id,
@@ -273,47 +283,74 @@ async def get_document_chunks(document_id: str, user_id: str) -> List[DocumentCh
 
 
 async def generate_query_embedding(query: str) -> List[float]:
-    """Generate embedding for user query."""
+    """Generate embedding for user query using OpenAI text-embedding-3-small."""
     try:
-        logger.debug(f"Generating embedding for query: {query}")
+        logger.debug(f"Generating OpenAI embedding for query: {query}")
         
-        # Use document service client to generate actual embedding
-        embedding = await document_client.generate_embedding(query)
+        import openai
         
-        if not embedding:
-            logger.warning("Document service returned empty embedding, using mock")
-            # Fallback to mock embedding
-            import random
-            return [random.random() for _ in range(384)]
+        openai_api_key = os.getenv('OPENAI_API_KEY')
+        
+        if not openai_api_key or openai_api_key == 'your-openai-api-key-here':
+            logger.warning("No OpenAI API key found, falling back to document service")
+            # Fallback to document service
+            embedding = await document_client.generate_embedding(query)
+            if embedding:
+                return embedding
+            else:
+                # Final fallback to mock embedding with correct dimensions
+                import random
+                return [random.random() for _ in range(1536)]  # text-embedding-3-small dimensions
+        
+        # Generate embedding using OpenAI text-embedding-3-small
+        client = openai.OpenAI(api_key=openai_api_key)
+        
+        response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=query,
+            encoding_format="float"
+        )
+        
+        embedding = response.data[0].embedding
+        logger.info(f"Generated OpenAI query embedding (dimension: {len(embedding)})")
         
         return embedding
         
     except Exception as e:
         logger.error(f"Error generating query embedding: {e}")
-        # Fallback to mock embedding
+        # Fallback to document service
+        try:
+            embedding = await document_client.generate_embedding(query)
+            if embedding:
+                return embedding
+        except Exception:
+            pass
+        
+        # Final fallback to mock embedding
         import random
-        return [random.random() for _ in range(384)]
+        return [random.random() for _ in range(1536)]
 
 
-async def search_similar_chunks_with_text(
-    query_text: str, 
+async def search_similar_chunks_with_vector(
+    query_embedding: List[float], 
     user_id: str, 
     max_results: int,
     threshold: float
 ) -> List[DocumentChunk]:
-    """Search for similar document chunks using text search via Next.js internal API."""
+    """Search for similar document chunks using real vector similarity search."""
     try:
-        logger.debug(f"Searching for chunks with text: {query_text}")
+        logger.debug(f"Vector similarity search for user {user_id} with threshold {threshold}")
         
-        # Call the Next.js internal API (no authentication required)
+        # Call the Next.js internal vector search API
         import httpx
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "http://localhost:3000/api/internal/chunks/search",
+                "http://localhost:3000/api/internal/search/vector",
                 json={
-                    "query_text": query_text,
+                    "query_embedding": query_embedding,
                     "user_id": user_id,
-                    "max_results": max_results
+                    "max_results": max_results,
+                    "similarity_threshold": threshold
                 },
                 headers={"Content-Type": "application/json"}
             )
@@ -322,7 +359,7 @@ async def search_similar_chunks_with_text(
                 data = response.json()
                 chunks = data.get("chunks", [])
                 
-                logger.info(f"Found {len(chunks)} chunks via internal API for query: {query_text}")
+                logger.info(f"Found {len(chunks)} similar chunks via vector search for user {user_id}")
                 
                 # Convert to DocumentChunk objects
                 document_chunks = []
@@ -331,18 +368,18 @@ async def search_similar_chunks_with_text(
                         chunk_id=chunk_data['chunk_id'],
                         document_id=chunk_data['document_id'],
                         content=chunk_data['content'],
-                        embedding=[],  # Empty for now
+                        embedding=query_embedding,  # Use query embedding
                         metadata=chunk_data['metadata']
                     )
                     document_chunks.append(chunk)
                 
                 return document_chunks
             else:
-                logger.error(f"Internal API search failed: {response.status_code} - {response.text}")
+                logger.error(f"Vector search API failed: {response.status_code} - {response.text}")
                 return []
         
     except Exception as e:
-        logger.error(f"Error in text-based chunk search: {e}")
+        logger.error(f"Error in vector similarity search: {e}")
         return []
 
 
@@ -431,28 +468,142 @@ async def generate_response_with_citations(
         raise Exception(f"Response generation failed: {str(e)}")
 
 
-async def generate_contextual_response(query: str, context_texts: List[str]) -> str:
-    """Generate response based on query and context (mock implementation)."""
+async def search_similar_chunks_with_text(
+    query_text: str, 
+    user_id: str, 
+    max_results: int,
+    threshold: float
+) -> List[DocumentChunk]:
+    """Fallback text search for similar document chunks."""
     try:
-        # This would use an actual LLM (OpenAI, Anthropic, or local model)
-        # For now, create a mock response based on the context
+        logger.debug(f"Text search fallback for user {user_id}")
         
+        # Call the Next.js internal text search API
+        import httpx
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "http://localhost:3000/api/internal/chunks/search",
+                json={
+                    "query_text": query_text,
+                    "user_id": user_id,
+                    "max_results": max_results
+                },
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                chunks = data.get("chunks", [])
+                
+                logger.info(f"Found {len(chunks)} chunks via text search fallback")
+                
+                # Convert to DocumentChunk objects
+                document_chunks = []
+                for chunk_data in chunks:
+                    chunk = DocumentChunk(
+                        chunk_id=chunk_data['chunk_id'],
+                        document_id=chunk_data['document_id'],
+                        content=chunk_data['content'],
+                        embedding=[],  # Empty for text search
+                        metadata=chunk_data['metadata']
+                    )
+                    document_chunks.append(chunk)
+                
+                return document_chunks
+            else:
+                logger.error(f"Text search API failed: {response.status_code}")
+                return []
+        
+    except Exception as e:
+        logger.error(f"Error in text search fallback: {e}")
+        return []
+
+
+async def generate_contextual_response(query: str, context_texts: List[str]) -> str:
+    """Generate response using OpenAI GPT for real LLM-powered responses."""
+    try:
+        import openai
+        
+        # Initialize OpenAI client (you'll need to add OPENAI_API_KEY to .env)
+        openai_api_key = os.getenv('OPENAI_API_KEY')
+        
+        if not openai_api_key:
+            logger.warning("No OpenAI API key found, using enhanced mock response")
+            return await generate_enhanced_mock_response(query, context_texts)
+        
+        client = openai.OpenAI(api_key=openai_api_key)
+        
+        # Prepare context from retrieved chunks
+        combined_context = "\n\n".join(context_texts[:5])  # Use top 5 chunks
+        
+        # Create a comprehensive prompt for RAG
+        system_prompt = """You are a helpful AI assistant that answers questions based on provided context from documents. 
+
+INSTRUCTIONS:
+1. Answer the user's question using ONLY the information provided in the context
+2. If the context doesn't contain enough information to answer the question, say so clearly
+3. Be specific and cite relevant details from the context
+4. Keep your response concise but comprehensive
+5. Do not make up information not present in the context
+6. If multiple sources provide relevant information, synthesize them coherently"""
+
+        user_prompt = f"""CONTEXT:
+{combined_context}
+
+QUESTION: {query}
+
+Please provide a helpful answer based on the context above."""
+
+        # Generate response using OpenAI GPT-4o-mini
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=500,  # As specified
+            temperature=0.3,  # Lower temperature for more factual responses
+        )
+        
+        generated_response = response.choices[0].message.content
+        logger.info("Generated response using OpenAI GPT-4o-mini")
+        
+        return generated_response or "I couldn't generate a response based on the provided context."
+        
+    except Exception as e:
+        logger.error(f"Error in OpenAI response generation: {e}")
+        # Fallback to enhanced mock response
+        return await generate_enhanced_mock_response(query, context_texts)
+
+
+async def generate_enhanced_mock_response(query: str, context_texts: List[str]) -> str:
+    """Enhanced mock response generation when OpenAI is not available."""
+    try:
         combined_context = " ".join(context_texts[:3])  # Use first 3 chunks
         
-        # Simple mock response generation
-        if "what" in query.lower():
-            response = f"Based on your documents, here's what I found: {combined_context[:300]}..."
-        elif "how" in query.lower():
-            response = f"According to your documents, here's how this works: {combined_context[:300]}..."
-        elif "why" in query.lower():
-            response = f"Your documents explain this as follows: {combined_context[:300]}..."
+        # More sophisticated mock response based on query type and context
+        query_lower = query.lower()
+        
+        if any(word in query_lower for word in ["what", "define", "definition"]):
+            response = f"Based on your documents, here's what I found about your question:\n\n{combined_context[:400]}..."
+        elif any(word in query_lower for word in ["how", "process", "method", "steps"]):
+            response = f"According to your documents, here's how this works:\n\n{combined_context[:400]}..."
+        elif any(word in query_lower for word in ["why", "reason", "because", "cause"]):
+            response = f"Your documents explain the reasoning as follows:\n\n{combined_context[:400]}..."
+        elif any(word in query_lower for word in ["when", "time", "date", "schedule"]):
+            response = f"Based on the timing information in your documents:\n\n{combined_context[:400]}..."
+        elif any(word in query_lower for word in ["where", "location", "place"]):
+            response = f"Regarding location information from your documents:\n\n{combined_context[:400]}..."
         else:
-            response = f"Based on the information in your documents: {combined_context[:300]}..."
+            response = f"Based on the information in your documents:\n\n{combined_context[:400]}..."
+        
+        # Add a note about using mock response
+        response += "\n\n*Note: This response was generated using a basic text processing system. For more sophisticated AI responses, configure an OpenAI API key.*"
         
         return response
         
     except Exception as e:
-        logger.error(f"Error in contextual response generation: {e}")
+        logger.error(f"Error in enhanced mock response generation: {e}")
         return "I encountered an error while generating a response. Please try again."
 
 
