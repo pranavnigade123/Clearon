@@ -15,6 +15,11 @@ from core.config import settings
 from core.document_processor import DocumentProcessor
 from core.embedding_service import EmbeddingService
 from shared.database.connection import document_service, query_service
+import sys
+from pathlib import Path
+# Add the services directory to the path to import shared models
+sys.path.append(str(Path(__file__).parent.parent.parent.parent))
+from shared.models.base import SourceType
 
 router = APIRouter()
 
@@ -137,13 +142,8 @@ async def process_document_task(
             raise ValueError(f"Unsupported source type for S3 processing: {source_type}")
         
         if result.success and result.document and result.chunks:
-            # Generate embeddings for chunks
-            texts = [chunk.content for chunk in result.chunks]
-            embeddings = await embedding_service.generate_embeddings(texts)
-            
-            # Add embeddings to chunks
-            for chunk, embedding in zip(result.chunks, embeddings):
-                chunk.embedding = embedding
+            # Generate embeddings for chunks using OpenAI
+            result.chunks = await document_processor.generate_embeddings_for_chunks(result.chunks)
             
             # Store chunks in database
             await document_service.insert_chunks(result.chunks)
@@ -189,13 +189,8 @@ async def process_url_task(
         )
         
         if result.success and result.document and result.chunks:
-            # Generate embeddings for chunks
-            texts = [chunk.content for chunk in result.chunks]
-            embeddings = await embedding_service.generate_embeddings(texts)
-            
-            # Add embeddings to chunks
-            for chunk, embedding in zip(result.chunks, embeddings):
-                chunk.embedding = embedding
+            # Generate embeddings for chunks using OpenAI
+            result.chunks = await document_processor.generate_embeddings_for_chunks(result.chunks)
             
             # Store chunks in database
             await document_service.insert_chunks(result.chunks)

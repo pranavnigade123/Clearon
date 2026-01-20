@@ -1,6 +1,6 @@
 """
 Response Generator
-Generate responses from retrieved document chunks
+Generate responses from retrieved document chunks using OpenAI LLM
 """
 
 import re
@@ -9,39 +9,47 @@ from typing import List, Dict, Any, Tuple
 from loguru import logger
 
 from .config import settings
+from .openai_service import openai_service
 
 
 class ResponseGenerator:
-    """Generate responses from retrieved document chunks."""
+    """Generate responses from retrieved document chunks using OpenAI LLM."""
     
     def __init__(self):
         self.max_context_length = settings.MAX_CONTEXT_LENGTH
         self.response_max_length = settings.RESPONSE_MAX_LENGTH
+        self.use_llm = True  # Flag to enable/disable LLM usage
     
     async def generate_response(
         self,
         query: str,
         search_results: List[Dict[str, Any]]
     ) -> Tuple[str, float]:
-        """Generate a response from search results."""
+        """Generate a response from search results using OpenAI LLM."""
         try:
             if not search_results:
                 return "I couldn't find any relevant information to answer your question.", 0.0
             
             logger.info(f"Generating response from {len(search_results)} search results")
             
-            # Prepare context from search results
+            # Try to use OpenAI LLM first
+            if self.use_llm:
+                try:
+                    response, confidence = await openai_service.generate_response(
+                        query, search_results, self.max_context_length
+                    )
+                    logger.info(f"Generated LLM response with confidence {confidence:.2f}")
+                    return response, confidence
+                except Exception as e:
+                    logger.warning(f"LLM response generation failed, falling back to template: {e}")
+                    # Fall back to template-based response
+            
+            # Fallback: Generate response using template-based approach
             context = self._prepare_context(search_results)
-            
-            # Generate response using template-based approach
-            # In a production system, you might use an LLM here
             response = await self._generate_template_response(query, context, search_results)
-            
-            # Calculate confidence score
             confidence = self._calculate_confidence(search_results)
             
-            logger.info(f"Generated response with confidence {confidence:.2f}")
-            
+            logger.info(f"Generated template response with confidence {confidence:.2f}")
             return response, confidence
             
         except Exception as e:

@@ -1,1 +1,1 @@
-# Core package
+# Core modules for document processing

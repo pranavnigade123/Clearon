@@ -20,6 +20,13 @@ import asyncio
 from datetime import datetime
 import httpx
 
+# Load environment variables from the root .env file
+root_env_path = Path(__file__).parent.parent.parent / ".env"
+load_dotenv(root_env_path)
+
+# Override the ALLOWED_ORIGINS to avoid config issues
+os.environ["ALLOWED_ORIGINS"] = "http://localhost:3000,http://localhost:3001"
+
 from core.document_service_client import DocumentServiceClient
 from core.database_client import DatabaseClient
 
@@ -283,36 +290,15 @@ async def get_document_chunks(document_id: str, user_id: str) -> List[DocumentCh
 
 
 async def generate_query_embedding(query: str) -> List[float]:
-    """Generate embedding for user query using OpenAI text-embedding-3-small."""
+    """Generate embedding for user query using Azure OpenAI."""
     try:
-        logger.debug(f"Generating OpenAI embedding for query: {query}")
+        logger.debug(f"Generating Azure OpenAI embedding for query: {query}")
         
-        import openai
+        # Use the OpenAI service which supports Azure OpenAI
+        from core.openai_service import openai_service
         
-        openai_api_key = os.getenv('OPENAI_API_KEY')
-        
-        if not openai_api_key or openai_api_key == 'your-openai-api-key-here':
-            logger.warning("No OpenAI API key found, falling back to document service")
-            # Fallback to document service
-            embedding = await document_client.generate_embedding(query)
-            if embedding:
-                return embedding
-            else:
-                # Final fallback to mock embedding with correct dimensions
-                import random
-                return [random.random() for _ in range(1536)]  # text-embedding-3-small dimensions
-        
-        # Generate embedding using OpenAI text-embedding-3-small
-        client = openai.OpenAI(api_key=openai_api_key)
-        
-        response = client.embeddings.create(
-            model="text-embedding-3-small",
-            input=query,
-            encoding_format="float"
-        )
-        
-        embedding = response.data[0].embedding
-        logger.info(f"Generated OpenAI query embedding (dimension: {len(embedding)})")
+        embedding = await openai_service.generate_query_embedding(query)
+        logger.info(f"Generated Azure OpenAI query embedding (dimension: {len(embedding)})")
         
         return embedding
         
@@ -326,7 +312,9 @@ async def generate_query_embedding(query: str) -> List[float]:
         except Exception:
             pass
         
-        # Final fallback to mock embedding
+        # Final fallback to mock embedding with correct dimensions
+        import random
+        return [random.random() for _ in range(1536)]  # text-embedding-3-small dimensions
         import random
         return [random.random() for _ in range(1536)]
 
@@ -520,18 +508,10 @@ async def search_similar_chunks_with_text(
 
 
 async def generate_contextual_response(query: str, context_texts: List[str]) -> str:
-    """Generate response using OpenAI GPT for real LLM-powered responses."""
+    """Generate response using Azure OpenAI GPT for real LLM-powered responses."""
     try:
-        import openai
-        
-        # Initialize OpenAI client (you'll need to add OPENAI_API_KEY to .env)
-        openai_api_key = os.getenv('OPENAI_API_KEY')
-        
-        if not openai_api_key:
-            logger.warning("No OpenAI API key found, using enhanced mock response")
-            return await generate_enhanced_mock_response(query, context_texts)
-        
-        client = openai.OpenAI(api_key=openai_api_key)
+        # Use Azure OpenAI service instead of direct OpenAI
+        from core.openai_service import openai_service
         
         # Prepare context from retrieved chunks
         combined_context = "\n\n".join(context_texts[:5])  # Use top 5 chunks
@@ -554,24 +534,17 @@ QUESTION: {query}
 
 Please provide a helpful answer based on the context above."""
 
-        # Generate response using OpenAI GPT-4o-mini
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            max_tokens=500,  # As specified
-            temperature=0.3,  # Lower temperature for more factual responses
+        # Generate response using Azure OpenAI
+        response, confidence = await openai_service.generate_response(
+            query, 
+            [{"content": text} for text in context_texts[:5]]
         )
         
-        generated_response = response.choices[0].message.content
-        logger.info("Generated response using OpenAI GPT-4o-mini")
-        
-        return generated_response or "I couldn't generate a response based on the provided context."
+        logger.info("Generated response using Azure OpenAI")
+        return response
         
     except Exception as e:
-        logger.error(f"Error in OpenAI response generation: {e}")
+        logger.error(f"Error in Azure OpenAI response generation: {e}")
         # Fallback to enhanced mock response
         return await generate_enhanced_mock_response(query, context_texts)
 

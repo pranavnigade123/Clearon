@@ -1,56 +1,39 @@
 """
 Query Engine
-Core query processing and vector search functionality
+Core query processing and vector search functionality with OpenAI integration
 """
 
 import time
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 
-from sentence_transformers import SentenceTransformer
 from loguru import logger
 
 from .config import settings
+from .openai_service import openai_service
 from ..shared.database.connection import query_service
 
 
 class QueryEngine:
-    """Core query processing engine with vector search capabilities."""
+    """Core query processing engine with OpenAI vector search capabilities."""
     
     def __init__(self):
-        self.model_name = settings.EMBEDDING_MODEL
-        self.model = None
         self.similarity_threshold = settings.SIMILARITY_THRESHOLD
         self.max_results = settings.MAX_RESULTS
-        self._load_model()
-    
-    def _load_model(self):
-        """Load the embedding model."""
-        try:
-            logger.info(f"Loading query embedding model: {self.model_name}")
-            self.model = SentenceTransformer(self.model_name)
-            logger.info("Query embedding model loaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to load embedding model: {e}")
-            raise
+        logger.info("QueryEngine initialized with OpenAI integration")
     
     async def generate_query_embedding(self, query: str) -> List[float]:
-        """Generate embedding for a user query."""
+        """Generate embedding for a user query using OpenAI."""
         try:
-            if not self.model:
-                raise RuntimeError("Embedding model not loaded")
-            
-            # Clean and prepare query
-            cleaned_query = query.strip()
-            if not cleaned_query:
+            if not query.strip():
                 raise ValueError("Query cannot be empty")
             
-            logger.debug(f"Generating embedding for query: {cleaned_query[:100]}...")
+            logger.debug(f"Generating OpenAI embedding for query: {query[:100]}...")
             
-            # Generate embedding
-            embedding = self.model.encode([cleaned_query], convert_to_numpy=True)
+            # Use OpenAI service to generate embedding
+            embedding = await openai_service.generate_query_embedding(query)
             
-            return embedding[0].tolist()
+            return embedding
             
         except Exception as e:
             logger.error(f"Query embedding generation failed: {e}")
@@ -202,3 +185,11 @@ class QueryEngine:
         except Exception as e:
             logger.warning(f"Relevance score calculation failed: {e}")
             return similarity
+    
+    async def test_openai_connection(self) -> bool:
+        """Test OpenAI API connection."""
+        return await openai_service.test_connection()
+    
+    async def get_openai_model_info(self) -> dict:
+        """Get OpenAI model information."""
+        return await openai_service.get_model_info()

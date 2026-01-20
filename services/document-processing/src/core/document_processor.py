@@ -1,6 +1,6 @@
 """
 Document Processing Core
-Main document processing logic for different file types
+Main document processing logic for different file types with OpenAI embeddings
 """
 
 import asyncio
@@ -18,6 +18,7 @@ from loguru import logger
 
 from .config import settings
 from .chunking_service import ChunkingService
+from .openai_service import openai_service
 from ..shared.models.base import (
     UnifiedDocument, DocumentChunk, ProcessingResult, 
     SourceType, ProcessingStatus, SourceLocation
@@ -368,3 +369,37 @@ class DocumentProcessor:
         except Exception as e:
             logger.error(f"Web content extraction failed: {e}")
             raise
+    
+    async def generate_embeddings_for_chunks(self, chunks: List[DocumentChunk]) -> List[DocumentChunk]:
+        """Generate OpenAI embeddings for document chunks."""
+        try:
+            if not chunks:
+                return chunks
+            
+            logger.info(f"Generating OpenAI embeddings for {len(chunks)} chunks")
+            
+            # Extract text content from chunks
+            chunk_texts = [chunk.content for chunk in chunks]
+            
+            # Generate embeddings using OpenAI service
+            embeddings = await openai_service.generate_embeddings(chunk_texts)
+            
+            # Update chunks with embeddings
+            for chunk, embedding in zip(chunks, embeddings):
+                chunk.embedding = embedding
+            
+            logger.info(f"Successfully generated embeddings for {len(chunks)} chunks")
+            return chunks
+            
+        except Exception as e:
+            logger.error(f"Failed to generate embeddings for chunks: {e}")
+            # Return chunks without embeddings rather than failing completely
+            return chunks
+    
+    async def test_openai_connection(self) -> bool:
+        """Test OpenAI API connection."""
+        return await openai_service.test_connection()
+    
+    async def get_openai_model_info(self) -> dict:
+        """Get OpenAI model information."""
+        return await openai_service.get_model_info()

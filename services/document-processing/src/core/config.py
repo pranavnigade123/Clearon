@@ -3,7 +3,7 @@ Configuration settings for Document Processing Service
 """
 
 import os
-from typing import List
+from typing import List, Optional
 
 from pydantic_settings import BaseSettings
 
@@ -27,8 +27,19 @@ class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
     AWS_S3_BUCKET: str
     
-    # AI/ML Configuration
-    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    # Azure OpenAI Configuration (REQUIRED)
+    AZURE_OPENAI_API_KEY: str
+    AZURE_OPENAI_ENDPOINT: str
+    AZURE_OPENAI_API_VERSION: str = "2024-02-15-preview"
+    AZURE_OPENAI_EMBEDDING_DEPLOYMENT: Optional[str] = None
+    AZURE_OPENAI_LLM_DEPLOYMENT: Optional[str] = None
+    
+    # Model Configuration
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_DIMENSIONS: int = 1536
+    LLM_MODEL: str = "gpt-4o-mini"
+    
+    # Document Processing
     CHUNK_SIZE: int = 512
     CHUNK_OVERLAP: int = 102
     MAX_FILE_SIZE: int = 50 * 1024 * 1024  # 50MB
@@ -48,8 +59,13 @@ class Settings(BaseSettings):
         """Get CORS origins as a list."""
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",")]
     
+    @property
+    def is_azure_openai(self) -> bool:
+        """Check if using Azure OpenAI (always True now)."""
+        return True
+    
     class Config:
-        env_file = ".env"
+        env_file = "../../.env"  # Load from root .env file
         case_sensitive = True
         extra = "ignore"  # Ignore extra fields
 

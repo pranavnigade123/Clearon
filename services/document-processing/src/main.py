@@ -18,6 +18,10 @@ from loguru import logger
 from pydantic import BaseModel
 from typing import Optional, List
 import boto3
+
+# Load environment variables from the root .env file
+root_env_path = Path(__file__).parent.parent.parent / ".env"
+load_dotenv(root_env_path)
 from botocore.exceptions import ClientError, NoCredentialsError
 
 from processors import ProcessorFactory
@@ -44,9 +48,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize processor factory and embedding service
+# Initialize processor factory (no sentence-transformers embedding service needed)
 processor_factory = ProcessorFactory()
-embedding_service = EmbeddingService()
+# embedding_service = EmbeddingService()  # Disabled - using Azure OpenAI instead
 
 # Initialize S3 client
 s3_client = None
@@ -235,6 +239,106 @@ async def process_s3_document(request: ProcessDocumentRequest) -> ProcessDocumen
         logger.info(f"S3 document {request.document_id} processed successfully")
         logger.info(f"Extracted {result['total_pages']} pages, {result['total_words']} words")
         
+        # Now create chunks and embeddings
+        try:
+            logger.info(f"Creating chunks with embeddings for document {request.document_id}")
+            
+            # First, create the document record in the database
+            import httpx
+            async with httpx.AsyncClient() as client:
+                document_data = {
+                    "id": request.document_id,
+                    "user_id": request.user_id,
+                    "title": request.title or "PDF Document",
+                    "source_type": "PDF",
+                    "source_url": f"s3://{request.s3_bucket}/{request.s3_key}",
+                    "s3_key": request.s3_key,
+                    "processing_status": "COMPLETED",
+                    "total_pages": result.get('total_pages', 0),
+                    "total_words": result.get('total_words', 0),
+                    "extraction_method": result.get('extraction_method', 'unknown')
+                }
+                
+                try:
+                    doc_response = await client.post(
+                        "http://localhost:3000/api/internal/documents/create",
+                        json=document_data,
+                        timeout=30.0
+                    )
+                    if doc_response.status_code == 200:
+                        logger.info(f"Document record created successfully for {request.document_id}")
+                    else:
+                        logger.error(f"Failed to create document record: {doc_response.status_code} - {doc_response.text}")
+                except Exception as doc_error:
+                    logger.error(f"Error creating document record: {doc_error}")
+            
+            # Create simple chunks directly
+            text_content = result['total_text']
+            chunk_size = 512  # Match the configured chunk size
+            chunks = []
+            
+            # Simple chunking by splitting text
+            words = text_content.split()
+            for i in range(0, len(words), chunk_size):
+                chunk_words = words[i:i + chunk_size]
+                chunk_content = ' '.join(chunk_words)
+                
+                if chunk_content.strip():
+                    chunks.append({
+                        'content': chunk_content,
+                        'chunk_index': i//chunk_size,
+                        'metadata': {
+                            "source_type": "PDF",
+                            "title": request.title or "PDF Document"
+                        }
+                    })
+            
+            logger.info(f"Created {len(chunks)} text chunks, now generating embeddings...")
+            
+            # Generate embeddings for chunks using Azure OpenAI
+            from core.openai_service import openai_service
+            
+            for i, chunk in enumerate(chunks):
+                try:
+                    # Generate embedding for this chunk
+                    embedding = await openai_service.generate_single_embedding(chunk['content'])
+                    chunk['embedding'] = embedding
+                    
+                    logger.info(f"Generated embedding for chunk {i} (dimension: {len(embedding)})")
+                    
+                    # Store chunk in database via Next.js API
+                    async with httpx.AsyncClient() as client:
+                        chunk_data = {
+                            "document_id": request.document_id,
+                            "user_id": request.user_id,
+                            "content": chunk['content'],
+                            "embedding": chunk['embedding'],
+                            "chunk_index": chunk['chunk_index'],
+                            "metadata": chunk['metadata']
+                        }
+                        
+                        try:
+                            response = await client.post(
+                                "http://localhost:3000/api/internal/chunks/create",
+                                json=chunk_data,
+                                timeout=30.0
+                            )
+                            if response.status_code == 200:
+                                logger.info(f"Successfully stored chunk {i}")
+                            else:
+                                logger.error(f"Failed to store chunk {i}: {response.status_code} - {response.text}")
+                        except Exception as store_error:
+                            logger.error(f"Error storing chunk {i}: {store_error}")
+                            
+                except Exception as embedding_error:
+                    logger.error(f"Error generating embedding for chunk {i}: {embedding_error}")
+            
+            logger.info(f"Document {request.document_id} processing completed successfully - {len(chunks)} chunks created and stored")
+            
+        except Exception as chunk_error:
+            logger.error(f"Failed to create chunks for document {request.document_id}: {chunk_error}")
+            # Continue with document processing response even if chunking fails
+        
         return ProcessDocumentResponse(
             message="S3 document processed successfully",
             document_id=request.document_id,
@@ -293,46 +397,25 @@ async def validate_document(file_path: str):
 
 @app.post("/api/embeddings/generate", response_model=EmbeddingResponse)
 async def generate_embedding(request: EmbeddingRequest):
-    """Generate embedding for text using OpenAI text-embedding-3-small."""
+    """Generate embedding for text using Azure OpenAI text-embedding-3-small."""
     try:
-        logger.info(f"Generating OpenAI embedding for text: {request.text[:100]}...")
+        logger.info(f"Generating Azure OpenAI embedding for text: {request.text[:100]}...")
 
         # Validate input
         if not request.text.strip():
             raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-        # Use OpenAI for embeddings
-        import openai
+        # Use Azure OpenAI for embeddings
+        from core.openai_service import openai_service
         
-        openai_api_key = os.getenv('OPENAI_API_KEY')
+        embedding = await openai_service.generate_single_embedding(request.text)
         
-        if not openai_api_key or openai_api_key == 'your-openai-api-key-here':
-            logger.warning("No OpenAI API key found, falling back to sentence-transformers")
-            # Fallback to sentence-transformers
-            embedding = await embedding_service.generate_single_embedding(request.text)
-            return EmbeddingResponse(
-                embedding=embedding,
-                dimension=len(embedding),
-                model="all-MiniLM-L6-v2 (fallback)"
-            )
-        
-        # Generate embedding using OpenAI text-embedding-3-small
-        client = openai.OpenAI(api_key=openai_api_key)
-        
-        response = client.embeddings.create(
-            model="text-embedding-3-small",
-            input=request.text,
-            encoding_format="float"
-        )
-        
-        embedding = response.data[0].embedding
-        
-        logger.info(f"Generated OpenAI embedding with dimension: {len(embedding)}")
+        logger.info(f"Generated Azure OpenAI embedding with dimension: {len(embedding)}")
 
         return EmbeddingResponse(
             embedding=embedding,
             dimension=len(embedding),
-            model="text-embedding-3-small"
+            model="text-embedding-3-small (Azure OpenAI)"
         )
 
     except HTTPException:
@@ -348,21 +431,39 @@ async def generate_embedding(request: EmbeddingRequest):
                 model="all-MiniLM-L6-v2 (error-fallback)"
             )
         except Exception as fallback_error:
-            logger.error(f"Fallback embedding also failed: {fallback_error}")
-            raise HTTPException(status_code=500, detail=f"Embedding generation failed: {str(e)}")
+            logger.error(f"Azure OpenAI embedding failed: {fallback_error}")
+            raise HTTPException(status_code=500, detail=f"Azure OpenAI embedding generation failed: {str(e)}")
 
 
 @app.get("/api/embeddings/health")
 async def embedding_health_check():
-    """Check health of embedding service."""
+    """Check health of Azure OpenAI embedding service."""
     try:
-        health_status = await embedding_service.health_check()
-        return health_status
+        from core.openai_service import openai_service
+        
+        # Test Azure OpenAI connection
+        connection_test = await openai_service.test_connection()
+        model_info = await openai_service.get_model_info()
+        
+        if connection_test:
+            return {
+                "status": "healthy",
+                "provider": "Azure OpenAI",
+                "model_info": model_info
+            }
+        else:
+            return {
+                "status": "unhealthy",
+                "provider": "Azure OpenAI",
+                "error": "Connection test failed",
+                "model_info": model_info
+            }
 
     except Exception as e:
-        logger.error(f"Error checking embedding service health: {e}")
+        logger.error(f"Error checking Azure OpenAI service health: {e}")
         return {
             "status": "unhealthy",
+            "provider": "Azure OpenAI",
             "error": str(e)
         }
 

@@ -3,7 +3,7 @@ Configuration settings for Query Processing Service
 """
 
 import os
-from typing import List
+from typing import List, Optional
 
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
@@ -22,18 +22,30 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_SERVICE_ROLE_KEY: str
     
-    # AI/ML Configuration
-    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    # Azure OpenAI Configuration (REQUIRED)
+    AZURE_OPENAI_API_KEY: str
+    AZURE_OPENAI_ENDPOINT: str
+    AZURE_OPENAI_API_VERSION: str = "2024-02-15-preview"
+    AZURE_OPENAI_EMBEDDING_DEPLOYMENT: Optional[str] = None
+    AZURE_OPENAI_LLM_DEPLOYMENT: Optional[str] = None
+    
+    # Model Configuration
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_DIMENSIONS: int = 1536
+    LLM_MODEL: str = "gpt-4o-mini"
+    
+    # Query Processing
     SIMILARITY_THRESHOLD: float = 0.78
     MAX_RESULTS: int = 10
     MAX_CONTEXT_LENGTH: int = 4000
+    MAX_OUTPUT_TOKENS: int = 500
     
-    # Query processing
+    # Response generation
     RESPONSE_MAX_LENGTH: int = 1000
     CITATION_MAX_EXCERPT_LENGTH: int = 200
     
     # Security
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
     
     # Performance
     MAX_CONCURRENT_QUERIES: int = 10
@@ -42,12 +54,10 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
     
-    @field_validator("ALLOWED_ORIGINS", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, v):
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
-        return v
+    @property
+    def is_azure_openai(self) -> bool:
+        """Check if using Azure OpenAI (always True now)."""
+        return True
     
     @field_validator("DATABASE_URL")
     @classmethod
@@ -71,7 +81,7 @@ class Settings(BaseSettings):
         return v
     
     class Config:
-        env_file = ".env"
+        env_file = "../../.env"  # Load from root .env file
         case_sensitive = True
         extra = "ignore"  # Ignore extra fields
 

@@ -1,1 +1,1 @@
-# Core services for query processing
+# Core modules for query processing
